@@ -21,14 +21,76 @@ console.log('Attempting to connect to MongoDB...', {
   database: dbConfig.DB
 });
 
+// Start the server first to avoid 500 errors
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
+
+// Set up a fallback route for database connection issues
+let dbConnected = false;
+
+// Middleware to serve static files even if DB is down
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Database connection middleware
+app.use((req, res, next) => {
+  // Skip this middleware for static files
+  if (req.path.startsWith('/css/') || req.path.startsWith('/images/') || req.path.startsWith('/js/')) {
+    return next();
+  }
+  
+  if (!dbConnected) {
+    // Show a friendly error page for HTML requests
+    return res.status(503).send(`
+      <html>
+        <head>
+          <title>FreshShare - Maintenance</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+            h1 { color: #63b175; }
+            .message { background-color: #f8f9fa; border-left: 4px solid #63b175; padding: 15px; margin: 20px 0; }
+            .btn { display: inline-block; background-color: #63b175; color: white; padding: 10px 15px; text-decoration: none; border-radius: 4px; }
+          </style>
+        </head>
+        <body>
+          <h1>FreshShare - Maintenance</h1>
+          <div class="message">
+            <p>We're currently experiencing database connectivity issues. Our team has been notified and is working to resolve this as quickly as possible.</p>
+            <p>Please check back in a few minutes.</p>
+          </div>
+          <a href="/" class="btn">Try Again</a>
+        </body>
+      </html>
+    `);
+  }
+  next();
+});
+
 mongoose.connect(connectionURL, dbConfig.options)
   .then(() => {
     console.log('Successfully connected to MongoDB.');
+    dbConnected = true;
     initializeDatabase();
   })
   .catch(err => {
     console.error('MongoDB connection error:', err);
-    process.exit();
+    // Don't exit the process, just log the error
+    console.log('Server will continue running without database functionality');
+    
+    // Try to reconnect every 30 seconds
+    const reconnectInterval = setInterval(() => {
+      console.log('Attempting to reconnect to MongoDB...');
+      mongoose.connect(connectionURL, dbConfig.options)
+        .then(() => {
+          console.log('Successfully reconnected to MongoDB.');
+          dbConnected = true;
+          initializeDatabase();
+          clearInterval(reconnectInterval);
+        })
+        .catch(err => {
+          console.error('MongoDB reconnection failed:', err);
+        });
+    }, 30000);
   });
 
 // Initialize database with roles if needed
@@ -56,7 +118,6 @@ async function initializeDatabase() {
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(cookieParser());
 
 // Request logging middleware
@@ -320,9 +381,4 @@ app.get('/signup', (req, res) => {
 app.get('/logout', (req, res) => {
   res.clearCookie('token');
   res.redirect('/');
-});
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
 });
