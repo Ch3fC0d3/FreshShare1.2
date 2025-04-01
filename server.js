@@ -13,12 +13,11 @@ const PORT = process.env.PORT || 3001;
 
 // Database configuration
 const dbConfig = require('./config/db.config');
-const connectionURL = `mongodb://${dbConfig.HOST}:${dbConfig.PORT}/${dbConfig.DB}`;
+const connectionURL = `${dbConfig.HOST}/${dbConfig.DB}`;
 
 // Connect to MongoDB with better error handling
 console.log('Attempting to connect to MongoDB...', {
   host: dbConfig.HOST,
-  port: dbConfig.PORT,
   database: dbConfig.DB
 });
 
@@ -29,7 +28,7 @@ mongoose.connect(connectionURL, dbConfig.options)
   })
   .catch(err => {
     console.error('MongoDB connection error:', err);
-    process.exit(1);
+    process.exit();
   });
 
 // Initialize database with roles if needed

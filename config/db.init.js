@@ -6,17 +6,17 @@ const Group = db.group;
 const User = db.user;
 const Role = db.role;
 
+// Build the MongoDB Atlas connection string
+const atlasConnectionString = `${process.env.MONGODB_ATLAS_HOST}/${process.env.MONGODB_ATLAS_DB}`;
+
 // Initial connection
-mongoose.connect(`mongodb://${dbConfig.HOST}:${dbConfig.PORT}/${dbConfig.DB}`, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
+mongoose.connect(atlasConnectionString, dbConfig.options)
   .then(() => {
-    console.log("Successfully connected to MongoDB.");
+    console.log("Successfully connected to MongoDB Atlas.");
     initializeDatabase();
   })
   .catch(err => {
-    console.error("Connection error", err);
+    console.error("MongoDB Atlas connection error:", err);
     process.exit();
   });
 

@@ -105,21 +105,40 @@
     width: 100%;
 }
 
-/* Auth Button Styles */
+/* Auth Buttons Styles */
 .fs-auth-buttons {
     position: absolute;
     right: 20px;
     display: flex;
     gap: 10px;
+    align-items: center;
+}
+
+.fs-wallet-btn {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 8px;
+    transition: color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fs-wallet-btn:hover {
+    color: #63b175;
+}
+
+.fs-wallet-btn i {
+    font-size: 1.2rem;
 }
 
 .fs-btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 8px 20px;
-    border-radius: 6px;
+    padding: 8px 16px;
+    border-radius: 4px;
     font-weight: 500;
-    font-size: 0.95rem;
     text-decoration: none;
     transition: all 0.3s ease;
 }
@@ -127,7 +146,6 @@
 .fs-btn-primary {
     background-color: #63b175;
     color: white;
-    border: none;
 }
 
 .fs-btn-primary:hover {
@@ -136,12 +154,13 @@
 
 .fs-btn-secondary {
     background-color: transparent;
-    color: #63b175;
+    color: #333;
     border: 2px solid #63b175;
 }
 
 .fs-btn-secondary:hover {
-    background-color: rgba(99, 177, 117, 0.1);
+    background-color: #63b175;
+    color: white;
 }
 
 /* User Profile Styles */

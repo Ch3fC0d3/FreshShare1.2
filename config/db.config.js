@@ -1,7 +1,8 @@
 module.exports = {
-  HOST: "127.0.0.1",
-  PORT: 27017,
-  DB: "freshshare_db",
+  HOST: process.env.MONGODB_HOST,
+  DB: process.env.MONGODB_DB,
+  USER: process.env.MONGODB_USER,
+  PASSWORD: process.env.MONGODB_PASSWORD,
   options: {
     useNewUrlParser: true,
     useUnifiedTopology: true,
