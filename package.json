@@ -4,8 +4,10 @@
   "description": "FreshShare application",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node minimal-server.js",
+    "dev": "nodemon server.js",
+    "full": "node server.js",
+    "minimal": "node minimal-server.js"
   },
   "dependencies": {
     "basic-ftp": "^5.0.3",
