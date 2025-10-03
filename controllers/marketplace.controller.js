@@ -3,6 +3,7 @@ const Listing = db.listing;
 const Vendor = db.vendor;
 const User = db.user;
 const Group = db.group;
+const authConfig = require('../config/auth.config');
 const usdaApi = require('../utils/usdaApi');
 const jwt = require('jsonwebtoken');
 const https = require('https');
@@ -12,15 +13,58 @@ const upcLogger = new FileLogger('upc-lookup.log');
 // Helper to extract user ID from request (JWT or req.user)
 function getUserId(req) {
   if (req.user && (req.user.id || req.user._id)) return req.user.id || req.user._id;
+  const primarySecret = (authConfig && authConfig.secret)
+    || process.env.JWT_SECRET
+    || 'bezkoder-secret-key';
+  const legacySecret = process.env.LEGACY_JWT_SECRET || 'freshShare-auth-secret';
+
+  const maskToken = (token) => {
+    if (!token || typeof token !== 'string') return '(none)';
+    if (token.length <= 12) return token;
+    return `${token.slice(0, 6)}…${token.slice(-6)}`;
+  };
+
+  const decodeWithSecrets = (token) => {
+    if (!token) return null;
+    try {
+      return jwt.verify(token, primarySecret);
+    } catch (primaryErr) {
+      try {
+        return jwt.verify(token, legacySecret);
+      } catch (legacyErr) {
+        console.warn('[marketplace.getUserId] JWT verification failed for both secrets', {
+          primaryError: primaryErr && primaryErr.message,
+          legacyError: legacyErr && legacyErr.message,
+          tokenPreview: maskToken(token)
+        });
+        return null;
+      }
+    }
+  };
+
   try {
     const tokenFromCookie = req.cookies && req.cookies.token;
     const authHeader = req.headers && req.headers.authorization;
-    const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
-    if (rawToken) {
-      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
-      if (decoded && decoded.id) return decoded.id;
-    }
-  } catch (e) {}
+    const rawToken = tokenFromCookie
+      || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
+
+    try {
+      console.log('[marketplace.getUserId] token candidates', {
+        cookie: maskToken(tokenFromCookie),
+        header: maskToken(authHeader),
+        chosen: maskToken(rawToken)
+      });
+    } catch (_) {}
+
+    const decoded = decodeWithSecrets(rawToken);
+    if (decoded && decoded.id) return decoded.id;
+    console.warn('[marketplace.getUserId] Failed to decode token to user ID', {
+      tokenPreview: maskToken(rawToken)
+    });
+  } catch (e) {
+    console.warn('[marketplace.getUserId] Unexpected error while extracting user ID', e && e.message);
+  }
+
   return null;
 }
 
@@ -291,19 +335,22 @@ exports.createListing = async (req, res) => {
     if (Array.isArray(body.tags)) tags = body.tags;
     else if (typeof body.tags === 'string' && body.tags.trim() !== '') tags = [body.tags];
 
-    // Determine seller from auth if available; try JWT cookie/Authorization as fallback
-    let sellerId = (req.user && (req.user.id || req.user._id)) || body.userId;
+    // Determine seller from auth if available (reuse shared helper)
+    let sellerId = body.userId;
+    const authUserId = getUserId(req);
+    if (authUserId) sellerId = authUserId;
     if (!sellerId) {
       try {
         const tokenFromCookie = req.cookies && req.cookies.token;
         const authHeader = req.headers && req.headers.authorization;
-        const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
-        if (rawToken) {
-          const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
-          if (decoded && decoded.id) sellerId = decoded.id;
-        }
-      } catch (e) {
-        // ignore decode errors; will fall back to 401 below
+        const rawToken = tokenFromCookie
+          || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
+        console.warn('[createListing] Missing sellerId after getUserId', {
+          cookie: tokenFromCookie ? `${tokenFromCookie.slice(0, 6)}…${tokenFromCookie.slice(-6)}` : '(none)',
+          header: authHeader || '(none)'
+        });
+      } catch (logErr) {
+        console.warn('[createListing] Error while logging missing seller diagnostics', logErr && logErr.message);
       }
     }
     if (!sellerId) {

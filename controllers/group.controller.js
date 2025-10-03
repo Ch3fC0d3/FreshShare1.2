@@ -1,6 +1,15 @@
 const mongoose = require('mongoose');
 const Group = require('../models/group.model');
 const User = require('../models/user.model');
+const GroupMessage = require('../models/groupMessage.model');
+const GroupEvent = require('../models/groupEvent.model');
+
+let ShoppingListItem = null;
+try {
+  ShoppingListItem = mongoose.model('ShoppingListItem');
+} catch (err) {
+  ShoppingListItem = null;
+}
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MAX_ACTIVE_PRODUCTS_CAP = 200;
@@ -45,7 +54,10 @@ const findProductById = (group, productId) => {
 
 const populateProductCreators = async (group) => {
   if (!group || typeof group.populate !== 'function') return group;
-  await group.populate('products.createdBy', 'username firstName lastName email');
+  await group.populate([
+    { path: 'products.createdBy', select: 'username firstName lastName email' },
+    { path: 'products.lastUpdatedBy', select: 'username firstName lastName email' }
+  ]);
   return group;
 };
 
@@ -62,27 +74,210 @@ const parseMaxActiveProducts = (value, current = 20) => {
   return parsed === null ? current : parsed;
 };
 
-const buildProductDoc = ({ name, note, imageUrl, productUrl }, userId) => {
-  if (!name || typeof name !== 'string' || !name.trim()) {
+const trimToString = (value, fallback = '') => {
+  if (value === undefined || value === null) return fallback;
+  return String(value).trim();
+};
+
+const toFiniteNumber = (value, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const toNonNegativeNumber = (value, fallback = 0) => {
+  const num = toFiniteNumber(value, fallback);
+  return num < 0 ? fallback : num;
+};
+
+const toPriceNumber = (value, fallback = 0) => {
+  const num = Number.parseFloat(value);
+  if (!Number.isFinite(num) || num < 0) return fallback;
+  return Math.round(num * 100) / 100;
+};
+
+const deriveTotalUnits = ({ totalUnits = 0, quantity = 0, caseSize = 0 }) => {
+  const provided = toNonNegativeNumber(totalUnits, 0);
+  if (provided > 0) return provided;
+  const qty = toNonNegativeNumber(quantity, 0);
+  const size = toNonNegativeNumber(caseSize, 0);
+  const derived = qty > 0 && size > 0 ? qty * size : 0;
+  return derived > 0 ? derived : 0;
+};
+
+const ensureDerivedFields = (product) => {
+  if (!product) return;
+  product.totalUnits = deriveTotalUnits({
+    totalUnits: product.totalUnits,
+    quantity: product.quantity,
+    caseSize: product.caseSize
+  });
+  if ((!Number.isFinite(product.unitPrice) || product.unitPrice <= 0) && Number.isFinite(product.casePrice) && product.casePrice > 0) {
+    const totalUnits = Number(product.totalUnits);
+    product.unitPrice = totalUnits > 0 ? Math.round((product.casePrice / totalUnits) * 100) / 100 : 0;
+  }
+};
+
+const applyProductDetails = (product, payload = {}, {
+  userId = null,
+  allowedFields = [],
+  allowStatusUpdates = false,
+  allowScoreUpdates = false
+} = {}) => {
+  if (!product || !payload) return false;
+  const allowAll = allowedFields === 'all';
+  const allowField = (field) => allowAll || allowedFields.includes(field);
+  let changed = false;
+
+  const assignValue = (field, value) => {
+    if (!allowField(field)) return;
+    if (value === undefined) return;
+    if (product[field] !== value) {
+      product[field] = value;
+      changed = true;
+    }
+  };
+
+  if (allowField('name') && typeof payload.name === 'string') {
+    const next = trimToString(payload.name);
+    if (next) assignValue('name', next);
+  }
+
+  if (allowField('note') && payload.note !== undefined) {
+    assignValue('note', trimToString(payload.note));
+  }
+
+  if (allowField('imageUrl') && payload.imageUrl !== undefined) {
+    assignValue('imageUrl', trimToString(payload.imageUrl));
+  }
+
+  if (allowField('productUrl') && payload.productUrl !== undefined) {
+    assignValue('productUrl', trimToString(payload.productUrl));
+  }
+
+  if (allowField('vendor') && payload.vendor !== undefined) {
+    assignValue('vendor', trimToString(payload.vendor));
+  }
+
+  if (allowField('unitSize') && payload.unitSize !== undefined) {
+    assignValue('unitSize', trimToString(payload.unitSize));
+  }
+
+  if (allowField('unitName') && payload.unitName !== undefined) {
+    assignValue('unitName', trimToString(payload.unitName));
+  }
+
+  if (allowField('caseSize') && payload.caseSize !== undefined) {
+    assignValue('caseSize', toNonNegativeNumber(payload.caseSize, product.caseSize || 0));
+  }
+
+  if (allowField('quantity') && payload.quantity !== undefined) {
+    assignValue('quantity', toNonNegativeNumber(payload.quantity, product.quantity || 0));
+  }
+
+  if (allowField('totalUnits') && payload.totalUnits !== undefined) {
+    assignValue('totalUnits', toNonNegativeNumber(payload.totalUnits, product.totalUnits || 0));
+  }
+
+  if (allowField('casePrice') && payload.casePrice !== undefined) {
+    assignValue('casePrice', toPriceNumber(payload.casePrice, product.casePrice || 0));
+  }
+
+  if (allowField('unitPrice') && payload.unitPrice !== undefined) {
+    assignValue('unitPrice', toPriceNumber(payload.unitPrice, product.unitPrice || 0));
+  }
+
+  if (allowField('purchaseNotes') && payload.purchaseNotes !== undefined) {
+    assignValue('purchaseNotes', trimToString(payload.purchaseNotes));
+  }
+
+  if (allowField('availabilityNote') && payload.availabilityNote !== undefined) {
+    assignValue('availabilityNote', trimToString(payload.availabilityNote));
+  }
+
+  if (allowField('isPreset') && payload.isPreset !== undefined) {
+    assignValue('isPreset', Boolean(payload.isPreset));
+  }
+
+  if (allowField('statusLocked') && payload.statusLocked !== undefined) {
+    assignValue('statusLocked', Boolean(payload.statusLocked));
+  }
+
+  if (allowStatusUpdates && payload.status && ['active', 'requested'].includes(payload.status)) {
+    assignValue('status', payload.status);
+  }
+
+  if (allowStatusUpdates && payload.pinned !== undefined) {
+    assignValue('pinned', Boolean(payload.pinned));
+  }
+
+  if (allowScoreUpdates && Number.isFinite(payload.score)) {
+    assignValue('score', Number(payload.score));
+  }
+
+  ensureDerivedFields(product);
+
+  if (changed) {
+    const now = new Date();
+    product.lastActivityAt = now;
+    product.updatedAt = now;
+    if (userId) {
+      product.lastUpdatedBy = userId;
+    }
+  }
+
+  return changed;
+};
+
+const buildProductDoc = (data, userId, options = {}) => {
+  if (!data || !data.name || typeof data.name !== 'string' || !data.name.trim()) {
     throw new Error('Product name is required');
   }
+
   const now = new Date();
-  return {
+  const baseDoc = {
     _id: new mongoose.Types.ObjectId(),
-    name: name.trim(),
-    note: (note || '').trim(),
-    imageUrl: (imageUrl || '').trim(),
-    productUrl: (productUrl || '').trim(),
+    name: trimToString(data.name),
+    note: trimToString(data.note),
+    imageUrl: trimToString(data.imageUrl),
+    productUrl: trimToString(data.productUrl),
+    vendor: '',
+    unitSize: '',
+    unitName: '',
+    caseSize: 0,
+    quantity: 1,
+    totalUnits: 0,
+    casePrice: 0,
+    unitPrice: 0,
+    purchaseNotes: '',
+    availabilityNote: '',
+    isPreset: Boolean(options.isPreset || data.isPreset),
+    statusLocked: Boolean(options.statusLocked || data.statusLocked),
     createdBy: userId,
-    status: 'requested',
-    score: 0,
-    upvoters: [],
-    downvoters: [],
-    pinned: false,
+    lastUpdatedBy: userId,
+    status: options.status || 'requested',
+    score: Number.isFinite(options.score) ? options.score : (options.defaultScore || 0),
+    upvoters: Array.isArray(options.upvoters) ? options.upvoters : [],
+    downvoters: Array.isArray(options.downvoters) ? options.downvoters : [],
+    pinned: Boolean(options.pinned || data.pinned),
     lastActivityAt: now,
     createdAt: now,
     updatedAt: now
   };
+
+  applyProductDetails(baseDoc, data, {
+    userId,
+    allowedFields: 'all',
+    allowStatusUpdates: true,
+    allowScoreUpdates: Boolean(options.allowScoreUpdates)
+  });
+
+  if (options.status) {
+    baseDoc.status = options.status;
+  }
+
+  ensureDerivedFields(baseDoc);
+
+  return baseDoc;
 };
 
 const recalculateProductRanks = (group) => {
@@ -101,6 +296,7 @@ const recalculateProductRanks = (group) => {
       doc.lastActivityAt = doc.updatedAt || doc.createdAt || new Date();
       changed = true;
     }
+    ensureDerivedFields(doc);
     return doc;
   });
 
@@ -118,7 +314,7 @@ const recalculateProductRanks = (group) => {
 
   products.forEach((product, index) => {
     const targetStatus = index < maxActive ? 'active' : 'requested';
-    if (product.status !== targetStatus) {
+    if (!product.statusLocked && product.status !== targetStatus) {
       product.status = targetStatus;
       changed = true;
     }
@@ -139,6 +335,7 @@ const serializeProduct = (product, userId) => {
   const createdBy = buildUserSummary(product.createdBy);
   const createdById = createdBy ? createdBy.id : product.createdBy ? String(product.createdBy) : null;
   const userIdStr = userId ? String(userId) : null;
+  const lastUpdatedBy = buildUserSummary(product.lastUpdatedBy);
   const userVote = userIdStr
     ? upvoters.includes(userIdStr)
       ? 'up'
@@ -153,9 +350,21 @@ const serializeProduct = (product, userId) => {
     note: product.note,
     imageUrl: product.imageUrl,
     productUrl: product.productUrl,
+    vendor: product.vendor || '',
+    unitSize: product.unitSize || '',
+    unitName: product.unitName || '',
+    caseSize: toNonNegativeNumber(product.caseSize, 0),
+    quantity: toNonNegativeNumber(product.quantity, 0),
+    totalUnits: toNonNegativeNumber(product.totalUnits, 0),
+    casePrice: toPriceNumber(product.casePrice, 0),
+    unitPrice: toPriceNumber(product.unitPrice, 0),
+    purchaseNotes: product.purchaseNotes || '',
+    availabilityNote: product.availabilityNote || '',
     status: product.status,
     score: product.score,
     pinned: Boolean(product.pinned),
+    isPreset: Boolean(product.isPreset),
+    statusLocked: Boolean(product.statusLocked),
     createdBy,
     createdById,
     isMine: createdById && userIdStr ? createdById === userIdStr : false,
@@ -164,7 +373,8 @@ const serializeProduct = (product, userId) => {
     userVote,
     lastActivityAt: product.lastActivityAt,
     createdAt: product.createdAt,
-    updatedAt: product.updatedAt
+    updatedAt: product.updatedAt,
+    lastUpdatedBy
   };
 };
 
@@ -195,15 +405,86 @@ const composeProductResponse = (group, userId) => {
   };
 };
 
+const migrateLegacyShoppingItems = async (group) => {
+  if (!group || !group._id || typeof ShoppingListItem === 'undefined') {
+    return false;
+  }
+
+  const legacyItems = await ShoppingListItem.find({ groupId: group._id });
+  if (!legacyItems || legacyItems.length === 0) {
+    return false;
+  }
+
+  const existingNames = new Set((group.products || []).map((product) => (product?.name || '').trim().toLowerCase()).filter(Boolean));
+  const additions = [];
+  const migratedIds = [];
+
+  legacyItems.forEach((item) => {
+    const productName = (item.productName || '').trim();
+    if (!productName) {
+      return;
+    }
+
+    if (existingNames.has(productName.toLowerCase())) {
+      return;
+    }
+
+    const productDoc = buildProductDoc({
+      name: productName,
+      vendor: item.vendor,
+      casePrice: item.casePrice,
+      quantity: item.quantity,
+      totalUnits: item.totalUnits,
+      purchaseNotes: item.notes
+    }, item.createdBy || group.createdBy, {
+      status: 'active',
+      isPreset: true,
+      statusLocked: true,
+      defaultScore: 1,
+      upvoters: [],
+      downvoters: [],
+      pinned: false
+    });
+
+    additions.push(productDoc);
+    migratedIds.push(item._id);
+    existingNames.add(productName.toLowerCase());
+  });
+
+  if (additions.length === 0) {
+    if (migratedIds.length > 0) {
+      await ShoppingListItem.deleteMany({ _id: { $in: migratedIds } });
+    }
+    return false;
+  }
+
+  group.products = [...(group.products || []), ...additions];
+  group.markModified('products');
+
+  const ranksChanged = recalculateProductRanks(group);
+  if (ranksChanged) {
+    group.updatedAt = new Date();
+  }
+
+  await group.save();
+  await ShoppingListItem.deleteMany({ _id: { $in: migratedIds } });
+  return true;
+};
+
 const normalizeSchedule = (payload) => {
-  if (!payload) return { day: null, time: null };
+  if (!payload) return null;
+  const result = {};
+  let hasValue = false;
   const { day = null, time = null } = payload;
-  const normalizedDay = DAYS.includes(day) ? day : null;
-  const normalizedTime = typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : null;
-  return {
-    day: normalizedDay,
-    time: normalizedTime
-  };
+  if (DAYS.includes(day)) {
+    result.day = day;
+    hasValue = true;
+  }
+  if (typeof time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    result.time = time;
+    hasValue = true;
+  }
+  return hasValue ? result : null;
 };
 
 const normalizeRules = (rules) => {
@@ -262,6 +543,13 @@ const populateGroupData = async (group, userId = null) => {
     .populate('products.createdBy', 'username firstName lastName email');
 
   if (!groupDoc) return null;
+
+  let migrated = false;
+  try {
+    migrated = await migrateLegacyShoppingItems(groupDoc);
+  } catch (migrationError) {
+    console.error('Error migrating legacy shopping list items for group', groupDoc._id, migrationError);
+  }
 
   const ranksChanged = recalculateProductRanks(groupDoc);
   if (ranksChanged) {
@@ -350,6 +638,16 @@ exports.createGroup = async (req, res) => {
     }
 
     // Create group object with validated data
+    const orderBySchedule = normalizeSchedule(req.body.orderBySchedule || {
+      day: req.body.orderByDay,
+      time: req.body.orderByTime
+    });
+
+    const deliverySchedule = normalizeSchedule(req.body.deliverySchedule || {
+      day: req.body.deliveryDay,
+      time: req.body.deliveryTime
+    });
+
     const groupData = {
       name: req.body.name.trim(),
       description: req.body.description.trim(),
@@ -362,14 +660,6 @@ exports.createGroup = async (req, res) => {
       },
       rules: normalizeRules(req.body.rules),
       deliveryDays: req.body.deliveryDays || [],
-      orderBySchedule: normalizeSchedule(req.body.orderBySchedule || {
-        day: req.body.orderByDay,
-        time: req.body.orderByTime
-      }),
-      deliverySchedule: normalizeSchedule(req.body.deliverySchedule || {
-        day: req.body.deliveryDay,
-        time: req.body.deliveryTime
-      }),
       isPrivate: req.body.isPrivate || false,
       maxActiveProducts,
       products: starterProducts,
@@ -377,6 +667,14 @@ exports.createGroup = async (req, res) => {
       members: [req.userId],
       admins: [req.userId]
     };
+
+    if (orderBySchedule) {
+      groupData.orderBySchedule = orderBySchedule;
+    }
+
+    if (deliverySchedule) {
+      groupData.deliverySchedule = deliverySchedule;
+    }
 
     // Create and save the group
     const group = new Group(groupData);
@@ -453,6 +751,12 @@ exports.listGroupProducts = async (req, res) => {
       });
     }
 
+    try {
+      await migrateLegacyShoppingItems(group);
+    } catch (migrationError) {
+      console.error('Failed migrating legacy shopping items for group', groupId, migrationError);
+    }
+
     await populateProductCreators(group);
     const response = composeProductResponse(group, req.userId);
     let products = response.products;
@@ -520,7 +824,7 @@ exports.suggestProduct = async (req, res) => {
       });
     }
 
-    const { name, note, imageUrl, productUrl } = req.body;
+    const { name } = req.body;
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({
         success: false,
@@ -538,22 +842,18 @@ exports.suggestProduct = async (req, res) => {
       });
     }
 
-    const productDoc = {
-      _id: new mongoose.Types.ObjectId(),
-      name: name.trim(),
-      note: (note || '').trim(),
-      imageUrl: (imageUrl || '').trim(),
-      productUrl: (productUrl || '').trim(),
-      createdBy: req.userId,
+    const productDoc = buildProductDoc(req.body, req.userId, {
       status: 'requested',
-      score: 1,
+      defaultScore: 1,
       upvoters: [req.userId],
       downvoters: [],
-      pinned: false,
-      lastActivityAt: now,
-      createdAt: now,
-      updatedAt: now
-    };
+      pinned: Boolean(req.body.pinned),
+      allowScoreUpdates: false
+    });
+
+    if (!productDoc.lastActivityAt) {
+      productDoc.lastActivityAt = now;
+    }
 
     group.products = [...existing, productDoc];
     group.markModified('products');
@@ -642,6 +942,7 @@ exports.voteOnProduct = async (req, res) => {
     group.products[index].downvoters = Array.from(downvoters);
     group.products[index].lastActivityAt = new Date();
     group.products[index].updatedAt = new Date();
+    group.products[index].lastUpdatedBy = req.userId;
 
     const changed = recalculateProductRanks(group);
     if (changed) {
@@ -675,7 +976,6 @@ exports.voteOnProduct = async (req, res) => {
 exports.updateProductStatus = async (req, res) => {
   try {
     const { id: groupId, productId } = req.params;
-    const { pinned } = req.body;
 
     const group = await Group.findById(groupId);
     if (!group) {
@@ -700,15 +1000,38 @@ exports.updateProductStatus = async (req, res) => {
       });
     }
 
-    if (typeof pinned === 'boolean') {
-      group.products[index].pinned = pinned;
-    }
+    const editableFields = [
+      'name',
+      'note',
+      'imageUrl',
+      'productUrl',
+      'vendor',
+      'unitSize',
+      'unitName',
+      'caseSize',
+      'quantity',
+      'totalUnits',
+      'casePrice',
+      'unitPrice',
+      'purchaseNotes',
+      'availabilityNote',
+      'isPreset',
+      'statusLocked'
+    ];
 
-    group.products[index].lastActivityAt = new Date();
-    group.products[index].updatedAt = new Date();
+    const changedByPayload = applyProductDetails(group.products[index], req.body, {
+      userId: req.userId,
+      allowedFields: editableFields,
+      allowStatusUpdates: true
+    });
+
+    const now = new Date();
+    group.products[index].lastActivityAt = now;
+    group.products[index].updatedAt = now;
+    group.products[index].lastUpdatedBy = req.userId;
 
     const changed = recalculateProductRanks(group);
-    if (changed) {
+    if (changed || changedByPayload) {
       group.updatedAt = new Date();
     }
     await group.save();
@@ -1266,326 +1589,6 @@ exports.inviteToGroup = async (req, res) => {
   }
 };
 
-// Models for new functionality (temporary - should be moved to separate files)
-
-// Shopping List Item Schema
-const ShoppingListItemSchema = new mongoose.Schema({
-  productName: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  vendor: {
-    type: String,
-    trim: true
-  },
-  casePrice: {
-    type: Number,
-    required: true,
-    min: 0
-  },
-  quantity: {
-    type: Number,
-    required: true,
-    min: 1,
-    default: 1
-  },
-  totalUnits: {
-    type: Number,
-    required: true,
-    min: 1,
-    default: 1
-  },
-  notes: {
-    type: String,
-    trim: true
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  groupId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Group',
-    required: true
-  }
-}, {
-  timestamps: true
-});
-
-// Message Schema
-const MessageSchema = new mongoose.Schema({
-  content: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  author: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  groupId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Group',
-    required: true
-  }
-}, {
-  timestamps: true
-});
-
-// Event Schema
-const EventSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  date: {
-    type: Date,
-    required: true
-  },
-  location: {
-    type: String,
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  groupId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Group',
-    required: true
-  }
-}, {
-  timestamps: true
-});
-
-// Create models from schemas or reference existing ones
-const ShoppingListItem = mongoose.model('ShoppingListItem', ShoppingListItemSchema);
-// Use the existing Message model instead of redefining it
-const Message = require('../models/message.model');
-const Event = mongoose.model('Event', EventSchema);
-
-/**
- * Get shopping list for a group
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.getShoppingList = async (req, res) => {
-  try {
-    const { id: groupId } = req.params;
-    
-    const items = await ShoppingListItem.find({ groupId })
-      .populate('createdBy', 'username email')
-      .sort({ createdAt: -1 });
-    
-    res.json({
-      success: true,
-      items
-    });
-  } catch (err) {
-    console.error('Error in getShoppingList:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Error getting shopping list',
-      error: err.message
-    });
-  }
-};
-
-/**
- * Add item to shopping list
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.addShoppingListItem = async (req, res) => {
-  try {
-    const { id: groupId } = req.params;
-    
-    // Validate required fields
-    const { productName, casePrice, quantity, totalUnits } = req.body;
-    if (!productName) {
-      return res.status(400).json({
-        success: false,
-        message: 'Product name is required'
-      });
-    }
-    
-    // Find the group
-    const group = await Group.findById(groupId);
-    if (!group) {
-      return res.status(404).json({
-        success: false,
-        message: 'Group not found'
-      });
-    }
-    
-    // Check if user is a member
-    if (!group.members.includes(req.userId)) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only group members can add items'
-      });
-    }
-    
-    // Create and save the item
-    const newItem = new ShoppingListItem({
-      productName,
-      vendor: req.body.vendor || '',
-      casePrice: casePrice || 0,
-      quantity: quantity || 1,
-      totalUnits: totalUnits || 1,
-      notes: req.body.notes || '',
-      createdBy: req.userId,
-      groupId
-    });
-    
-    const savedItem = await newItem.save();
-    await savedItem.populate('createdBy', 'username email');
-    
-    res.status(201).json({
-      success: true,
-      item: savedItem
-    });
-  } catch (err) {
-    console.error('Error in addShoppingListItem:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Error adding shopping list item',
-      error: err.message
-    });
-  }
-};
-
-/**
- * Update shopping list item
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.updateShoppingListItem = async (req, res) => {
-  try {
-    const { id: groupId, itemId } = req.params;
-    
-    // Find the item
-    const item = await ShoppingListItem.findById(itemId);
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        message: 'Item not found'
-      });
-    }
-    
-    // Check if item belongs to the specified group
-    if (item.groupId.toString() !== groupId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Item does not belong to this group'
-      });
-    }
-    
-    // Check if user is the creator or an admin
-    const group = await Group.findById(groupId);
-    const isAdmin = group.admins.includes(req.userId);
-    const isCreator = item.createdBy.toString() === req.userId;
-    
-    if (!isAdmin && !isCreator) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to update this item'
-      });
-    }
-    
-    // Update the item
-    const updatedItem = await ShoppingListItem.findByIdAndUpdate(
-      itemId,
-      {
-        productName: req.body.productName,
-        vendor: req.body.vendor || '',
-        casePrice: req.body.casePrice || 0,
-        quantity: req.body.quantity || 1,
-        totalUnits: req.body.totalUnits || 1,
-        notes: req.body.notes || ''
-      },
-      { new: true, runValidators: true }
-    ).populate('createdBy', 'username email');
-    
-    res.json({
-      success: true,
-      item: updatedItem
-    });
-  } catch (err) {
-    console.error('Error in updateShoppingListItem:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating shopping list item',
-      error: err.message
-    });
-  }
-};
-
-/**
- * Delete shopping list item
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-exports.deleteShoppingListItem = async (req, res) => {
-  try {
-    const { id: groupId, itemId } = req.params;
-    
-    // Find the item
-    const item = await ShoppingListItem.findById(itemId);
-    if (!item) {
-      return res.status(404).json({
-        success: false,
-        message: 'Item not found'
-      });
-    }
-    
-    // Check if item belongs to the specified group
-    if (item.groupId.toString() !== groupId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Item does not belong to this group'
-      });
-    }
-    
-    // Check if user is the creator or an admin
-    const group = await Group.findById(groupId);
-    const isAdmin = group.admins.includes(req.userId);
-    const isCreator = item.createdBy.toString() === req.userId;
-    
-    if (!isAdmin && !isCreator) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to delete this item'
-      });
-    }
-    
-    // Delete the item
-    await ShoppingListItem.findByIdAndDelete(itemId);
-    
-    res.json({
-      success: true,
-      message: 'Item deleted successfully'
-    });
-  } catch (err) {
-    console.error('Error in deleteShoppingListItem:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting shopping list item',
-      error: err.message
-    });
-  }
-};
-
 /**
  * Get messages for a group
  * @param {Object} req - Express request object
@@ -1595,7 +1598,7 @@ exports.getMessages = async (req, res) => {
   try {
     const { id: groupId } = req.params;
     
-    const messages = await Message.find({ groupId })
+    const messages = await GroupMessage.find({ groupId })
       .populate('author', 'username email avatar')
       .sort({ createdAt: -1 });
     
@@ -1648,12 +1651,12 @@ exports.addMessage = async (req, res) => {
     }
     
     // Create and save the message
-    const newMessage = new Message({
+    const newMessage = new GroupMessage({
       content,
       author: req.userId,
       groupId
     });
-    
+
     const savedMessage = await newMessage.save();
     await savedMessage.populate('author', 'username email avatar');
     
@@ -1681,7 +1684,7 @@ exports.deleteMessage = async (req, res) => {
     const { id: groupId, messageId } = req.params;
     
     // Find the message
-    const message = await Message.findById(messageId);
+    const message = await GroupMessage.findById(messageId);
     if (!message) {
       return res.status(404).json({
         success: false,
@@ -1710,7 +1713,7 @@ exports.deleteMessage = async (req, res) => {
     }
     
     // Delete the message
-    await Message.findByIdAndDelete(messageId);
+    await GroupMessage.findByIdAndDelete(messageId);
     
     res.json({
       success: true,
@@ -1735,7 +1738,7 @@ exports.getEvents = async (req, res) => {
   try {
     const { id: groupId } = req.params;
     
-    const events = await Event.find({ groupId })
+    const events = await GroupEvent.find({ groupId })
       .populate('createdBy', 'username email')
       .sort({ date: 1 });
     
@@ -1788,7 +1791,7 @@ exports.createEvent = async (req, res) => {
     }
     
     // Create and save the event
-    const newEvent = new Event({
+    const newEvent = new GroupEvent({
       title,
       date,
       location: location || '',
@@ -1824,7 +1827,7 @@ exports.updateEvent = async (req, res) => {
     const { id: groupId, eventId } = req.params;
     
     // Find the event
-    const event = await Event.findById(eventId);
+    const event = await GroupEvent.findById(eventId);
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -1853,7 +1856,7 @@ exports.updateEvent = async (req, res) => {
     }
     
     // Update the event
-    const updatedEvent = await Event.findByIdAndUpdate(
+    const updatedEvent = await GroupEvent.findByIdAndUpdate(
       eventId,
       {
         title: req.body.title,
@@ -1917,7 +1920,7 @@ exports.deleteEvent = async (req, res) => {
     }
     
     // Delete the event
-    await Event.findByIdAndDelete(eventId);
+    await GroupEvent.findByIdAndDelete(eventId);
     
     res.json({
       success: true,

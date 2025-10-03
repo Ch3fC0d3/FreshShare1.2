@@ -22,6 +22,71 @@ const rankedProductSchema = new mongoose.Schema({
     trim: true,
     maxlength: [500, 'Product URL cannot exceed 500 characters']
   },
+  vendor: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  unitSize: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  unitName: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  caseSize: {
+    type: Number,
+    min: [0, 'Case size cannot be negative'],
+    default: 0
+  },
+  quantity: {
+    type: Number,
+    min: [0, 'Quantity cannot be negative'],
+    default: 1
+  },
+  totalUnits: {
+    type: Number,
+    min: [0, 'Total units cannot be negative'],
+    default: 0
+  },
+  casePrice: {
+    type: Number,
+    min: [0, 'Case price cannot be negative'],
+    default: 0
+  },
+  unitPrice: {
+    type: Number,
+    min: [0, 'Unit price cannot be negative'],
+    default: 0
+  },
+  purchaseNotes: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Purchase notes cannot exceed 500 characters'],
+    default: ''
+  },
+  availabilityNote: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Availability note cannot exceed 500 characters'],
+    default: ''
+  },
+  isPreset: {
+    type: Boolean,
+    default: false
+  },
+  statusLocked: {
+    type: Boolean,
+    default: false
+  },
+  lastUpdatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -190,11 +255,11 @@ const groupSchema = new mongoose.Schema({
         values: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
         message: '{VALUE} is not a valid day'
       },
-      default: null
+      default: undefined
     },
     time: {
       type: String,
-      default: null,
+      default: undefined,
       match: [/^([01]\d|2[0-3]):[0-5]\d$/, 'Order by time must be in HH:MM 24-hour format']
     }
   },
@@ -205,11 +270,11 @@ const groupSchema = new mongoose.Schema({
         values: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
         message: '{VALUE} is not a valid day'
       },
-      default: null
+      default: undefined
     },
     time: {
       type: String,
-      default: null,
+      default: undefined,
       match: [/^([01]\d|2[0-3]):[0-5]\d$/, 'Delivery time must be in HH:MM 24-hour format']
     }
   }
