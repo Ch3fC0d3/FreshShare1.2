@@ -1,0 +1,60 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches: [ main, auth-fix ]  # Deploy when pushing to main or auth-fix
+  workflow_dispatch:  # Allow manual deployment
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Deploy to cPanel via FTP
+      uses: SamKirkland/FTP-Deploy-Action@4.3.3
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        server-dir: /home/myjrooxo/freshshare1.3/
+        exclude: |
+          **/.git*
+          **/.git*/**
+          **/node_modules/**
+          .env.example
+          README.md
+          tests/**
+          .github/**
+
+    - name: Setup SSH and restart Node.js app
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.CPANEL_HOST }}
+        username: ${{ secrets.CPANEL_USERNAME }}
+        password: ${{ secrets.CPANEL_PASSWORD }}
+        port: 22
+        script: |
+          cd /home/myjrooxo/freshshare1.3
+          
+          # Install/update dependencies
+          npm install --production
+          
+          # Create .env file with production settings
+          echo "NODE_ENV=production" > .env
+          echo "PORT=3001" >> .env
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+          echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+          echo "JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}" >> .env
+          echo "EMAIL_HOST=${{ secrets.EMAIL_HOST }}" >> .env
+          echo "EMAIL_PORT=${{ secrets.EMAIL_PORT }}" >> .env
+          echo "EMAIL_USER=${{ secrets.EMAIL_USER }}" >> .env
+          echo "EMAIL_PASS=${{ secrets.EMAIL_PASS }}" >> .env
+          echo "EMAIL_FROM=${{ secrets.EMAIL_FROM }}" >> .env
+          
+          # Restart the Node.js application via cPanel API or touch restart.txt
+          touch tmp/restart.txt
+          
+          echo "Deployment completed successfully!"
