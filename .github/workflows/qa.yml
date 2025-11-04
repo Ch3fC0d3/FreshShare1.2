@@ -35,7 +35,7 @@ jobs:
         run: |
           cat > .env << EOF
           PORT=3002
-          NODE_ENV=test
+          NODE_ENV=ci
           MONGODB_URI=mongodb://127.0.0.1:27017/freshshare_ci
           JWT_SECRET=testsecret
           USDA_API_KEY=test_key_for_ci
@@ -51,7 +51,7 @@ jobs:
 
       - name: Start app in background
         run: |
-          PORT=3002 NODE_ENV=test node server.js > server.log 2>&1 &
+          PORT=3002 NODE_ENV=ci node server.js > server.log 2>&1 &
           SERVER_PID=$!
           echo "Server started with PID $SERVER_PID"
           echo $SERVER_PID > server.pid
