@@ -13,23 +13,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Deploy to cPanel via FTP
-      uses: SamKirkland/FTP-Deploy-Action@4.3.3
-      with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        server-dir: /home/myjrooxo/freshshare1.3/
-        exclude: |
-          **/.git*
-          **/.git*/**
-          **/node_modules/**
-          .env.example
-          README.md
-          tests/**
-          .github/**
-
-    - name: Setup SSH and restart Node.js app
+    - name: Deploy via SSH and restart Node.js app
       uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.CPANEL_HOST }}
@@ -37,7 +21,18 @@ jobs:
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         port: 22
         script: |
+          # Navigate to app directory
           cd /home/myjrooxo/freshshare1.3
+          
+          # Initialize git if not already done
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin https://github.com/Ch3fC0d3/Freshshare4.git
+          fi
+          
+          # Pull latest code from GitHub
+          git fetch origin
+          git reset --hard origin/auth-fix
           
           # Install/update dependencies
           npm install --production
