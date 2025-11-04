@@ -132,13 +132,13 @@
 }
 
 .fs-btn-primary {
-    background-color: #4a8f5e; /* Darkened from #63b175 for 4.5:1 contrast ratio */
+    background-color: #3d7a4f; /* Darkened to achieve 4.5:1 contrast ratio */
     color: white;
     border: none;
 }
 
 .fs-btn-primary:hover {
-    background-color: #3d7a4f;
+    background-color: #2d5a3a;
 }
 
 .fs-btn-secondary {
