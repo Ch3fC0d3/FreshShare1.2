@@ -40,22 +40,47 @@ jobs:
           JWT_SECRET=testsecret
           USDA_API_KEY=test_key_for_ci
           SESSION_SECRET=test_session_secret
+          SMTP_HOST=localhost
+          SMTP_PORT=587
+          SMTP_USER=test@example.com
+          SMTP_PASS=testpass
+          EMAIL_FROM=noreply@freshshare.test
           EOF
+          echo "Created .env file:"
+          cat .env
 
-      - name: Start app
+      - name: Start app in background
         run: |
-          node server.js > server.log 2>&1 &
-          echo "Server started with PID $!"
-          sleep 5
+          PORT=3002 NODE_ENV=test node server.js > server.log 2>&1 &
+          SERVER_PID=$!
+          echo "Server started with PID $SERVER_PID"
+          echo $SERVER_PID > server.pid
+          
+          # Wait a bit and check if process is still running
+          sleep 3
+          if kill -0 $SERVER_PID 2>/dev/null; then
+            echo "✓ Server process is running"
+          else
+            echo "✗ Server process died immediately"
+            cat server.log
+            exit 1
+          fi
 
-      - name: Check server logs
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for server on http://127.0.0.1:3002..."
+          npx wait-on http://127.0.0.1:3002 --timeout 30000 --interval 1000 || {
+            echo "Server failed to start. Logs:"
+            cat server.log
+            exit 1
+          }
+          echo "✓ Server is ready!"
+
+      - name: Show server logs
         if: always()
         run: |
           echo "=== Server logs ==="
-          cat server.log || echo "No server logs found"
-
-      - name: Wait for http://127.0.0.1:3002
-        run: npx wait-on http://127.0.0.1:3002 --timeout 60000
+          cat server.log 2>/dev/null || echo "No server logs found"
 
       # ---- Broken links crawl
       - name: Broken links (linkinator)
