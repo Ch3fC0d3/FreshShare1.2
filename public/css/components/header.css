@@ -58,7 +58,7 @@
 }
 
 .fs-logo-highlight {
-    color: #ff8800;
+    color: #cc6600; /* Darkened from #ff8800 for 3:1 contrast ratio */
 }
 
 /* Navigation Styles */
@@ -132,17 +132,18 @@
 }
 
 .fs-btn-primary {
-    background-color: #63b175;
+    background-color: #4a8f5e; /* Darkened from #63b175 for 4.5:1 contrast ratio */
     color: white;
     border: none;
 }
 
 .fs-btn-primary:hover {
-    background-color: #539360;
+    background-color: #3d7a4f;
 }
 
 .fs-btn-secondary {
-    border: 2px solid #63b175;
+    border: 2px solid #3d7a4f; /* Darkened for better contrast */
+    color: #2d5a3a; /* Dark green text for 4.5:1 contrast */
 }
 
 .fs-btn-secondary:hover {

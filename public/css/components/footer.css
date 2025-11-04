@@ -45,7 +45,7 @@
 }
 
 .footer-section.brand .logo .fs-logo-highlight {
-    color: #ff8800; /* Orange color for "Share" */
+    color: #cc6600; /* Darkened from #ff8800 for 3:1 contrast ratio */
     font-weight: 700;
 }
 

@@ -2694,7 +2694,7 @@ a:hover {
 }
 
 .feature-card p {
-    color: var(--text-muted);
+    color: #666666; /* Darkened from #757575 to meet 4.5:1 contrast on #f9f9f9 */
     margin: 0;
     font-size: 1.2rem;
     line-height: 1.6;

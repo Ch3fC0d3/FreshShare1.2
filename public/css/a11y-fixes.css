@@ -1,0 +1,53 @@
+/* Accessibility Fixes for WCAG AA Compliance */
+
+/* CTA Section - Fix color contrast */
+.cta-section {
+    padding: 60px 0;
+    background-color: #f8f9fa;
+    text-align: center;
+}
+
+.cta-title {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.cta-text {
+    font-size: 1.2rem;
+    color: #666;
+    margin-bottom: 30px;
+}
+
+.cta-btn {
+    display: inline-block;
+    padding: 15px 40px;
+    background-color: #2d5a3a; /* Darkened from #45a049 for 4.5:1 contrast */
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+}
+
+.cta-btn:hover {
+    background-color: #1f4028;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Feature descriptions - already fixed in main.css */
+.feature-description {
+    color: #666666; /* 4.5:1 contrast on #f9f9f9 */
+}
+
+/* Cart refresh button - fix contrast */
+#myCartRefresh.marketplace-btn {
+    background-color: #2d5a3a !important; /* Darkened for 4.5:1 contrast */
+    color: white !important;
+}
+
+#myCartRefresh.marketplace-btn:hover {
+    background-color: #1f4028 !important;
+}
