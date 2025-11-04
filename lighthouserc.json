@@ -1,6 +1,6 @@
 {
   "ci": {
-    "collect": { "url": ["http://127.0.0.1:3000/"] },
+    "collect": { "url": ["http://127.0.0.1:3002/"] },
     "assert": {
       "assertions": {
         "categories:performance": ["warn", { "minScore": 0.8 }],

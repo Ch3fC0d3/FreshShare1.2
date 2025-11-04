@@ -8,11 +8,11 @@
     "dev": "nodemon server.js",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "qa:serve": "node preview-server.js || node server.js",
-    "qa:wait": "wait-on http://127.0.0.1:3000",
-    "qa:links": "linkinator http://127.0.0.1:3000 --recurse --skip 'mailto:,tel:'",
+    "qa:serve": "node server.js",
+    "qa:wait": "wait-on http://127.0.0.1:3002",
+    "qa:links": "linkinator http://127.0.0.1:3002 --recurse --skip 'mailto:,tel:'",
     "qa:playwright": "playwright test",
-    "qa": "start-server-and-test qa:serve http://127.0.0.1:3000 qa:playwright"
+    "qa": "start-server-and-test qa:serve http://127.0.0.1:3002 qa:playwright"
   },
   "dependencies": {
     "axios": "^1.8.4",

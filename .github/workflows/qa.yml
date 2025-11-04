@@ -33,21 +33,19 @@ jobs:
 
       - name: Start app
         env:
-          PORT: 3000
+          PORT: 3002
           NODE_ENV: test
           MONGODB_URI: mongodb://127.0.0.1:27017/freshshare_ci
           JWT_SECRET: testsecret
         run: |
-          node preview-server.js >/dev/null 2>&1 & \
-          sleep 2 || true
           node server.js >/dev/null 2>&1 &
 
-      - name: Wait for http://127.0.0.1:3000
-        run: npx wait-on http://127.0.0.1:3000
+      - name: Wait for http://127.0.0.1:3002
+        run: npx wait-on http://127.0.0.1:3002
 
       # ---- Broken links crawl
       - name: Broken links (linkinator)
-        run: npx linkinator http://127.0.0.1:3000 --recurse --skip "mailto:,tel:"
+        run: npx linkinator http://127.0.0.1:3002 --recurse --skip "mailto:,tel:"
 
       # ---- Playwright (E2E + axe)
       - name: Install Playwright browsers
