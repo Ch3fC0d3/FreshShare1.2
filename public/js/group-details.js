@@ -2,8 +2,7 @@
  * Group Details Page JavaScript
  * Handles all functionality for the group details page including:
  * - Loading and displaying group information
- * - Managing shopping list items
- * - Discussion board functionality
+ * * - Discussion board functionality
  * - Event management
  * - Member management
  */
@@ -24,7 +23,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let isMember = false;
     
     // Data storage
-    let shoppingList = [];
     let discussionMessages = [];
     let groupEvents = [];
     let groupMembers = [];
@@ -58,11 +56,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Setup event listeners
             setupEventListeners();
 
-            // Load ranked products list
             await loadRankedProducts();
-            
-            // Load shopping list
-            loadShoppingList();
             
             // Load discussion board
             loadDiscussionBoard();
@@ -88,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (refreshBtn) {
             refreshBtn.addEventListener('click', async () => {
                 refreshBtn.disabled = true;
-                refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing';
+                setHTMLSafe(refreshBtn, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing');
                 try {
                     await loadRankedProducts();
                     showToast('Success', 'Product rankings updated.', 'success');
@@ -96,7 +90,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     showToast('Error', 'Failed to refresh products', 'error');
                 } finally {
                     refreshBtn.disabled = false;
-                    refreshBtn.innerHTML = '<i class="fas fa-sync"></i> Refresh';
+                    setHTMLSafe(refreshBtn, '<i class="fas fa-sync"></i> Refresh');
                 }
             });
         }
@@ -145,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
 
                 submitSuggestBtn.disabled = true;
-                submitSuggestBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting';
+                setHTMLSafe(submitSuggestBtn, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Submitting');
 
                 try {
                     const response = await authorizedFetch(`/api/groups/${groupId}/products`, {
@@ -172,7 +166,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 } finally {
                     submitSuggestBtn.disabled = false;
-                    submitSuggestBtn.innerHTML = 'Submit Suggestion';
+                    // Plain text label is safe
+                    try { submitSuggestBtn.textContent = 'Submit Suggestion'; } catch(_) {}
                 }
             });
         }
@@ -201,8 +196,17 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (response.ok) {
-                const data = await response.json();
-                currentUser = data;
+                const data = await response.json().catch(() => null);
+                const userPayload = data?.user || data;
+                if (userPayload && typeof userPayload === 'object') {
+                    const resolvedId = userPayload.id || userPayload._id || userPayload.userId;
+                    currentUser = {
+                        ...userPayload,
+                        id: resolvedId ? String(resolvedId) : userPayload.id
+                    };
+                } else {
+                    currentUser = null;
+                }
                 console.log('Current user:', currentUser);
             } else {
                 console.log('User not authenticated');
@@ -230,18 +234,51 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             const payload = await response.json();
-            const group = payload?.group || payload;
+            const group = payload?.group || payload || {};
             groupInfo = group;
             displayGroupDetails(group);
-            
-            // Check if current user is admin or member
+
+            const normalizeIdList = (list) => (
+                (Array.isArray(list) ? list : []).map((entry) => {
+                    if (!entry) return null;
+                    if (typeof entry === 'string') return entry;
+                    if (typeof entry === 'object') {
+                        if (entry.id) return String(entry.id);
+                        if (entry._id) return String(entry._id);
+                    }
+                    return String(entry);
+                }).filter(Boolean)
+            );
+
+            const resolveId = (value) => {
+                if (!value) return null;
+                if (typeof value === 'string') return value;
+                if (typeof value === 'object') {
+                    if (value.id) return String(value.id);
+                    if (value._id) return String(value._id);
+                }
+                return String(value);
+            };
+
+            let computedIsMember = false;
+            let computedIsAdmin = false;
+
             if (currentUser) {
-                isAdmin = Array.isArray(groupInfo.admins) && groupInfo.admins.includes(currentUser.id) || groupInfo.createdBy === currentUser.id;
-                isMember = Array.isArray(groupInfo.members) && groupInfo.members.includes(currentUser.id);
-                
-                // Update UI based on user role
-                updateUIBasedOnRole();
+                const currentUserId = resolveId(currentUser.id || currentUser._id || currentUser.userId || currentUser);
+                const memberIds = normalizeIdList(group.members);
+                const adminIds = normalizeIdList(group.admins);
+                const createdById = resolveId(group.createdBy);
+
+                if (currentUserId) {
+                    computedIsAdmin = adminIds.includes(currentUserId) || (createdById && createdById === currentUserId);
+                    computedIsMember = memberIds.includes(currentUserId) || computedIsAdmin;
+                }
             }
+
+            isMember = typeof group.isMember === 'boolean' ? group.isMember : computedIsMember;
+            isAdmin = typeof group.isAdmin === 'boolean' ? group.isAdmin : computedIsAdmin;
+
+            updateUIBasedOnRole();
         } catch (error) {
             console.error('Error loading group details:', error);
             showToast('Error', 'Failed to load group details', 'error');
@@ -312,6 +349,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Safely set HTML using DOMPurify if available; fall back to innerHTML
+    function setHTMLSafe(el, html) {
+        if (!el) return;
+        try {
+            if (window.SafeHTML && typeof window.SafeHTML.sanitize === 'function') {
+                el.innerHTML = window.SafeHTML.sanitize(String(html || ''));
+            } else if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+                el.innerHTML = window.DOMPurify.sanitize(String(html || ''));
+            } else {
+                el.innerHTML = String(html || '');
+            }
+        } catch (_) {
+            try { el.textContent = String(html || ''); } catch(__) {}
+        }
+    }
+    
     /**
      * Display group rules in the UI
      */
@@ -329,7 +382,8 @@ document.addEventListener('DOMContentLoaded', function() {
             hasRules = true;
             const descriptionEl = document.createElement('div');
             descriptionEl.className = 'mb-3';
-            descriptionEl.innerHTML = `<h5>Guidelines</h5><p>${rules.textDescription}</p>`;
+            // Escape the free-form textDescription to prevent XSS
+            setHTMLSafe(descriptionEl, `<h5>Guidelines</h5><p>${escapeHtml(rules.textDescription)}</p>`);
             rulesContainer.appendChild(descriptionEl);
         }
         
@@ -338,28 +392,28 @@ document.addEventListener('DOMContentLoaded', function() {
             hasRules = true;
             const memberLimitEl = document.createElement('div');
             memberLimitEl.className = 'mb-2';
-            memberLimitEl.innerHTML = `<strong>Member limit:</strong> ${rules.maxMembers} members`;
+            setHTMLSafe(memberLimitEl, `<strong>Member limit:</strong> ${Number(rules.maxMembers)} members`);
             rulesContainer.appendChild(memberLimitEl);
         }
         
         // Allow guests
         const guestsEl = document.createElement('div');
         guestsEl.className = 'mb-2';
-        guestsEl.innerHTML = `<strong>Guests allowed:</strong> ${rules.allowGuests ? 'Yes' : 'No'}`;
+        setHTMLSafe(guestsEl, `<strong>Guests allowed:</strong> ${rules.allowGuests ? 'Yes' : 'No'}`);
         rulesContainer.appendChild(guestsEl);
         hasRules = true;
         
         // Auto-approve members
         const approveMemEl = document.createElement('div');
         approveMemEl.className = 'mb-2';
-        approveMemEl.innerHTML = `<strong>Auto-approve members:</strong> ${rules.autoApproveMembers ? 'Yes' : 'No'}`;
+        setHTMLSafe(approveMemEl, `<strong>Auto-approve members:</strong> ${rules.autoApproveMembers ? 'Yes' : 'No'}`);
         rulesContainer.appendChild(approveMemEl);
         hasRules = true;
         
         // Auto-approve listings
         const approveListEl = document.createElement('div');
         approveListEl.className = 'mb-2';
-        approveListEl.innerHTML = `<strong>Auto-approve listings:</strong> ${rules.autoApproveListings ? 'Yes' : 'No'}`;
+        setHTMLSafe(approveListEl, `<strong>Auto-approve listings:</strong> ${rules.autoApproveListings ? 'Yes' : 'No'}`);
         rulesContainer.appendChild(approveListEl);
         hasRules = true;
         
@@ -368,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function() {
             hasRules = true;
             const feeEl = document.createElement('div');
             feeEl.className = 'mb-2';
-            feeEl.innerHTML = `<strong>Membership fee:</strong> $${rules.membershipFee.amount} (${rules.membershipFee.frequency})`;
+            setHTMLSafe(feeEl, `<strong>Membership fee:</strong> $${Number(rules.membershipFee.amount)} (${escapeHtml(rules.membershipFee.frequency)})`);
             rulesContainer.appendChild(feeEl);
         }
         
@@ -389,7 +443,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const joinGroupBtn = document.getElementById('join-group-btn');
         const leaveGroupBtn = document.getElementById('leave-group-btn');
         const adminActions = document.getElementById('admin-actions');
-        const addItemToggle = document.getElementById('add-item-toggle');
         const createEventBtn = document.getElementById('create-event-btn');
         const inviteMemberBtn = document.getElementById('invite-member-btn');
         const scheduleAdminActions = document.getElementById('schedule-admin-actions');
@@ -399,33 +452,38 @@ document.addEventListener('DOMContentLoaded', function() {
         const emptySuggestBtn = document.getElementById('empty-state-suggest-btn');
 
         // Update buttons based on membership status
-        if (isMember) {
-            joinGroupBtn.style.display = 'none';
-            leaveGroupBtn.style.display = 'inline-block';
-            addItemToggle.style.display = 'inline-block';
-            if (isAdmin) {
+        if (joinGroupBtn && leaveGroupBtn) {
+            if (isMember) {
+                joinGroupBtn.style.display = 'none';
+                leaveGroupBtn.style.display = 'inline-block';
+            } else {
+                joinGroupBtn.style.display = 'inline-block';
+                leaveGroupBtn.style.display = 'none';
+            }
+        }
+
+        if (createEventBtn) {
+            createEventBtn.style.display = isMember ? 'inline-block' : 'none';
+        }
+
+        if (scheduleAdminActions) {
+            if (isMember && isAdmin) {
                 scheduleAdminActions.style.display = 'inline-block';
+                scheduleAdminActions.classList.remove('d-none');
             } else {
                 scheduleAdminActions.style.display = 'none';
+                scheduleAdminActions.classList.add('d-none');
             }
-            createEventBtn.style.display = 'inline-block';
-        } else {
-            joinGroupBtn.style.display = 'inline-block';
-            leaveGroupBtn.style.display = 'none';
-            addItemToggle.style.display = 'none';
-            createEventBtn.style.display = 'none';
         }
-        
-        // Update admin actions
-        if (isAdmin) {
-            adminActions.style.display = 'inline-block';
-            inviteMemberBtn.style.display = 'inline-block';
-            if (scheduleAdminActions) scheduleAdminActions.classList.remove('d-none');
-        } else {
-            adminActions.style.display = 'none';
-            inviteMemberBtn.style.display = 'none';
-            if (scheduleAdminActions) scheduleAdminActions.classList.add('d-none');
-            if (scheduleForm) scheduleForm.style.display = 'none';
+        if (scheduleForm && !isAdmin) {
+            scheduleForm.style.display = 'none';
+        }
+
+        if (adminActions) {
+            adminActions.style.display = isAdmin ? 'inline-block' : 'none';
+        }
+        if (inviteMemberBtn) {
+            inviteMemberBtn.style.display = isAdmin ? 'inline-block' : 'none';
         }
 
         if (rankedSection) {
@@ -501,7 +559,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!isMember && !isAdmin) {
             emptyStateEl.style.display = 'block';
-            emptyStateEl.innerHTML = '<p class="mb-0">Join this group to view and suggest products.</p>';
+            setHTMLSafe(emptyStateEl, '<p class="mb-0">Join this group to view and suggest products.</p>');
             if (infoBanner) infoBanner.style.display = 'none';
             return;
         }
@@ -515,7 +573,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (filtered.length === 0) {
             emptyStateEl.style.display = 'block';
-            emptyStateEl.innerHTML = '<p class="mb-2">No requests yet—be the first to suggest a product.</p><button class="btn btn-primary" id="empty-state-suggest-btn"><i class="fas fa-plus"></i> Suggest a Product</button>';
+            setHTMLSafe(emptyStateEl, '<p class="mb-2">No requests yet—be the first to suggest a product.</p><button class="btn btn-primary" id="empty-state-suggest-btn"><i class="fas fa-plus"></i> Suggest a Product</button>');
             if (infoBanner) infoBanner.style.display = 'none';
             setupProductEventHandlers();
             return;
@@ -534,7 +592,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const pinnedBadge = product.pinned ? '<span class="badge bg-warning text-dark ms-2"><i class="fas fa-thumbtack"></i> Pinned</span>' : '';
             const isActive = productStatus === 'active';
 
-            card.innerHTML = `
+            setHTMLSafe(card, `
                 <div class="product-rank-badge">#${product.rank || '?'}</div>
                 <div class="ranked-product-topline">
                     <div class="ranked-product-info">
@@ -568,7 +626,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     ${isAdmin ? renderAdminProductActions(product) : ''}
                 </div>
-            `;
+            `);
 
             listEl.appendChild(card);
         });
@@ -635,7 +693,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const container = buttonEl.closest('.vote-buttons');
         const buttons = container.querySelectorAll('.vote-btn');
         buttons.forEach((btn) => btn.disabled = true);
-        buttonEl.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+        setHTMLSafe(buttonEl, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>');
 
         try {
             const response = await authorizedFetch(`/api/groups/${groupId}/products/${productId}/vote`, {
@@ -671,7 +729,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function updateProductStatus(productId, payload, buttonEl) {
         const originalLabel = buttonEl.innerHTML;
         buttonEl.disabled = true;
-        buttonEl.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+        setHTMLSafe(buttonEl, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>');
 
         try {
             const response = await authorizedFetch(`/api/groups/${groupId}/products/${productId}`, {
@@ -713,7 +771,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const originalLabel = buttonEl.innerHTML;
         buttonEl.disabled = true;
-        buttonEl.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+        setHTMLSafe(buttonEl, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>');
 
         try {
             const response = await authorizedFetch(`/api/groups/${groupId}/products/${productId}`, {
@@ -816,11 +874,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const thresholdMs = 24 * 60 * 60 * 1000; // 24 hours
         if (diffMs <= 0) {
             banner.className = 'alert alert-danger mt-3';
-            banner.innerHTML = '<strong>The order-by window has passed.</strong> New orders may not be accepted until the next cycle.';
+            setHTMLSafe(banner, '<strong>The order-by window has passed.</strong> New orders may not be accepted until the next cycle.');
             banner.style.display = 'block';
         } else if (diffMs <= thresholdMs) {
             banner.className = 'alert alert-warning mt-3';
-            banner.innerHTML = `<strong>Order by is approaching:</strong> ${formatDuration(diffMs)} remaining.`;
+            setHTMLSafe(banner, `<strong>Order by is approaching:</strong> ${formatDuration(diffMs)} remaining.`);
             banner.style.display = 'block';
         } else {
             banner.style.display = 'none';
@@ -920,7 +978,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const prevHtml = saveBtn ? saveBtn.innerHTML : '';
         try {
-            if (saveBtn){ saveBtn.disabled = true; saveBtn.innerHTML = 'Saving...'; }
+            if (saveBtn){ saveBtn.disabled = true; try { saveBtn.textContent = 'Saving...'; } catch(_) {} }
             const res = await fetch(`/api/groups/${groupId}`, {
                 method: 'PUT',
                 headers: {
@@ -967,21 +1025,12 @@ document.addEventListener('DOMContentLoaded', function() {
         setupProductEventHandlers();
         
         // Repurpose Add Item to Create Listing for this group
-        document.getElementById('add-item-toggle').addEventListener('click', function(){
-            window.location.href = `/create-listing?groupId=${encodeURIComponent(groupId)}`;
-        });
         const editScheduleBtn = document.getElementById('edit-schedule-btn');
         if (editScheduleBtn) editScheduleBtn.addEventListener('click', openScheduleForm);
         const saveScheduleBtn = document.getElementById('save-schedule-btn');
         if (saveScheduleBtn) saveScheduleBtn.addEventListener('click', saveSchedule);
         const cancelScheduleBtn = document.getElementById('cancel-schedule-btn');
         if (cancelScheduleBtn) cancelScheduleBtn.addEventListener('click', closeScheduleForm);
-        
-        // Shopping list form buttons (legacy form removed; guard to avoid null errors)
-        const saveItemBtn = document.getElementById('save-item-btn');
-        if (saveItemBtn) saveItemBtn.addEventListener('click', addShoppingListItem);
-        const cancelItemBtn = document.getElementById('cancel-item-btn');
-        if (cancelItemBtn) cancelItemBtn.addEventListener('click', toggleAddItemForm);
         
         // Discussion board
         document.getElementById('send-message-btn').addEventListener('click', sendMessage);
@@ -1006,7 +1055,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // disable join button during request
         const joinBtn = document.getElementById('join-group-btn');
         let prevPe='', prevOp='', prevHtml='';
-        if (joinBtn){ if (joinBtn.dataset.loading === '1') return; joinBtn.dataset.loading='1'; prevPe=joinBtn.style.pointerEvents; prevOp=joinBtn.style.opacity; prevHtml=joinBtn.innerHTML; joinBtn.style.pointerEvents='none'; joinBtn.style.opacity='0.6'; try{ joinBtn.innerHTML = 'Joining...'; }catch(_){} }
+        if (joinBtn){ if (joinBtn.dataset.loading === '1') return; joinBtn.dataset.loading='1'; prevPe=joinBtn.style.pointerEvents; prevOp=joinBtn.style.opacity; prevHtml=joinBtn.innerHTML; joinBtn.style.pointerEvents='none'; joinBtn.style.opacity='0.6'; try{ joinBtn.textContent = 'Joining...'; }catch(_){} }
 
         try {
             const response = await fetch(`/api/groups/${groupId}/join`, {
@@ -1052,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // disable leave button during request
         const leaveBtn = document.getElementById('leave-group-btn');
         let prevPe='', prevOp='', prevHtml='';
-        if (leaveBtn){ if (leaveBtn.dataset.loading === '1') return; leaveBtn.dataset.loading='1'; prevPe=leaveBtn.style.pointerEvents; prevOp=leaveBtn.style.opacity; prevHtml=leaveBtn.innerHTML; leaveBtn.style.pointerEvents='none'; leaveBtn.style.opacity='0.6'; try{ leaveBtn.innerHTML = 'Leaving...'; }catch(_){} }
+        if (leaveBtn){ if (leaveBtn.dataset.loading === '1') return; leaveBtn.dataset.loading='1'; prevPe=leaveBtn.style.pointerEvents; prevOp=leaveBtn.style.opacity; prevHtml=leaveBtn.innerHTML; leaveBtn.style.pointerEvents='none'; leaveBtn.style.opacity='0.6'; try{ leaveBtn.textContent = 'Leaving...'; }catch(_){} }
 
         try {
             const response = await fetch(`/api/groups/${groupId}/leave`, {
@@ -1110,341 +1159,6 @@ document.addEventListener('DOMContentLoaded', function() {
     /**
      * Toggle the add item form visibility
      */
-    function toggleAddItemForm() {
-        const form = document.getElementById('add-item-form');
-        const isVisible = form.style.display !== 'none';
-        
-        form.style.display = isVisible ? 'none' : 'block';
-        
-        // Clear form if hiding
-        if (isVisible) {
-            document.getElementById('product-name').value = '';
-            document.getElementById('vendor').value = '';
-            document.getElementById('case-price').value = '';
-            document.getElementById('quantity').value = '';
-            document.getElementById('total-units').value = '';
-            document.getElementById('item-notes').value = '';
-        }
-    }
-    
-    /**
-     * Load shopping list items from the server
-     */
-    async function loadShoppingList() {
-        try {
-            // Fetch marketplace listings for this group as the group shopping list
-            const url = `/api/marketplace?groupId=${encodeURIComponent(groupId)}&limit=100&page=1&sortBy=latest`;
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-            if (!response.ok) {
-                console.error('Failed to load group marketplace listings');
-                showToast('Error', 'Failed to load group products', 'error');
-                shoppingList = [];
-                return displayShoppingList();
-            }
-            const json = await response.json().catch(() => null);
-            shoppingList = (json && json.success && json.data && Array.isArray(json.data.listings)) ? json.data.listings : [];
-            displayShoppingList();
-        } catch (error) {
-            console.error('Error loading group products:', error);
-            showToast('Error', 'Failed to load group products', 'error');
-            shoppingList = [];
-            displayShoppingList();
-        }
-    }
-    
-    /**
-     * Display shopping list items in the UI
-     */
-    function displayShoppingList() {
-        const tableBody = document.getElementById('shopping-list-body');
-        const emptyState = document.getElementById('empty-shopping-list');
-        
-        // Clear previous content
-        tableBody.innerHTML = '';
-        
-        if (!Array.isArray(shoppingList) || shoppingList.length === 0) {
-            tableBody.parentElement.parentElement.style.display = 'none';
-            emptyState.style.display = 'block';
-            return;
-        }
-        
-        tableBody.parentElement.parentElement.style.display = 'block';
-        emptyState.style.display = 'none';
-        
-        // Render each marketplace listing as a shopping list row
-        shoppingList.forEach(listing => {
-            const row = document.createElement('tr');
-            const vendorName = (listing.vendor && listing.vendor.name) ? listing.vendor.name : '-';
-            const casePrice = (typeof listing.casePrice === 'number') ? listing.casePrice : 0;
-            const quantity = (typeof listing.quantity === 'number') ? listing.quantity : 1;
-            const caseSize = (typeof listing.caseSize === 'number') ? listing.caseSize : 1;
-            const totalUnits = (caseSize > 0 && quantity > 0) ? (caseSize * quantity) : (listing.totalUnits || '-');
-            row.innerHTML = `
-                <td>${escapeHtml(listing.title || '(Untitled)')}</td>
-                <td>${escapeHtml(vendorName)}</td>
-                <td>$${Number(casePrice || 0).toFixed(2)}</td>
-                <td>${quantity}</td>
-                <td>${totalUnits}</td>
-                <td class="shopping-list-actions">
-                  <a class="btn btn-sm btn-outline-secondary" href="/listings/${listing._id}" title="View listing">
-                    <i class="fas fa-external-link-alt"></i>
-                  </a>
-                </td>`;
-            tableBody.appendChild(row);
-        });
-    }
-    
-    /**
-     * Add a new shopping list item
-     */
-    async function addShoppingListItem() {
-        // Get form values
-        const productName = document.getElementById('product-name').value.trim();
-        const vendor = document.getElementById('vendor').value.trim();
-        const casePrice = parseFloat(document.getElementById('case-price').value) || 0;
-        const quantity = parseInt(document.getElementById('quantity').value) || 1;
-        const totalUnits = parseInt(document.getElementById('total-units').value) || 1;
-        const notes = document.getElementById('item-notes').value.trim();
-        
-        // Validate required fields
-        if (!productName) {
-            showToast('Error', 'Product name is required', 'error');
-            return;
-        }
-        const saveBtn = document.getElementById('save-item-btn');
-        let prevPe='', prevOp='', prevHtml='';
-        if (saveBtn){ if (saveBtn.dataset.loading === '1') return; saveBtn.dataset.loading='1'; prevPe=saveBtn.style.pointerEvents; prevOp=saveBtn.style.opacity; prevHtml=saveBtn.innerHTML; saveBtn.style.pointerEvents='none'; saveBtn.style.opacity='0.6'; try{ saveBtn.innerHTML='Saving...'; }catch(_){} }
-        
-        // Create item object
-        const newItem = {
-            productName,
-            vendor,
-            casePrice,
-            quantity,
-            totalUnits,
-            notes,
-            createdBy: currentUser.id,
-            groupId
-        };
-        
-        try {
-            const response = await fetch(`/api/groups/${groupId}/shopping-list`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify(newItem)
-            });
-            
-            if (!response.ok) {
-                // For demo purposes, add to local array if API doesn't exist yet
-                newItem._id = Date.now().toString();
-                shoppingList.push(newItem);
-                displayShoppingList();
-                toggleAddItemForm();
-                showToast('Success', 'Item added to shopping list', 'success');
-                return;
-            }
-            
-            const addedItem = await response.json();
-            shoppingList.push(addedItem);
-            displayShoppingList();
-            toggleAddItemForm();
-            showToast('Success', 'Item added to shopping list', 'success');
-        } catch (error) {
-            console.error('Error adding shopping list item:', error);
-            // For demo purposes, add to local array
-            newItem._id = Date.now().toString();
-            shoppingList.push(newItem);
-            displayShoppingList();
-            toggleAddItemForm();
-            showToast('Success', 'Item added to shopping list', 'success');
-        } finally {
-            if (saveBtn){ saveBtn.dataset.loading=''; saveBtn.style.pointerEvents = prevPe || ''; saveBtn.style.opacity = prevOp || ''; if (prevHtml) saveBtn.innerHTML = prevHtml; }
-        }
-    }
-    
-    /**
-     * Edit a shopping list item
-     */
-    function editShoppingListItem(itemId) {
-        // Find the item
-        const item = shoppingList.find(i => i._id === itemId);
-        if (!item) return;
-        
-        // Show the form and populate with item data
-        document.getElementById('product-name').value = item.productName;
-        document.getElementById('vendor').value = item.vendor || '';
-        document.getElementById('case-price').value = item.casePrice;
-        document.getElementById('quantity').value = item.quantity;
-        document.getElementById('total-units').value = item.totalUnits;
-        document.getElementById('item-notes').value = item.notes || '';
-        
-        // Show the form
-        document.getElementById('add-item-form').style.display = 'block';
-        
-        // Change save button to update
-        const saveButton = document.getElementById('save-item-btn');
-        saveButton.textContent = 'Update Item';
-        saveButton.dataset.itemId = itemId;
-        
-        // Change event listener to update item
-        saveButton.removeEventListener('click', addShoppingListItem);
-        saveButton.addEventListener('click', function updateHandler() {
-            updateShoppingListItem(itemId);
-            saveButton.removeEventListener('click', updateHandler);
-            saveButton.addEventListener('click', addShoppingListItem);
-        });
-    }
-    
-    /**
-     * Update a shopping list item
-     */
-    async function updateShoppingListItem(itemId) {
-        // Get form values
-        const productName = document.getElementById('product-name').value.trim();
-        const vendor = document.getElementById('vendor').value.trim();
-        const casePrice = parseFloat(document.getElementById('case-price').value) || 0;
-        const quantity = parseInt(document.getElementById('quantity').value) || 1;
-        const totalUnits = parseInt(document.getElementById('total-units').value) || 1;
-        const notes = document.getElementById('item-notes').value.trim();
-        
-        // Validate required fields
-        if (!productName) {
-            showToast('Error', 'Product name is required', 'error');
-            return;
-        }
-        const saveBtn = document.getElementById('save-item-btn');
-        let prevPe='', prevOp='', prevHtml='';
-        if (saveBtn){ if (saveBtn.dataset.loading === '1') return; saveBtn.dataset.loading='1'; prevPe=saveBtn.style.pointerEvents; prevOp=saveBtn.style.opacity; prevHtml=saveBtn.innerHTML; saveBtn.style.pointerEvents='none'; saveBtn.style.opacity='0.6'; try{ saveBtn.innerHTML='Saving...'; }catch(_){} }
-        
-        // Create updated item object
-        const updatedItem = {
-            productName,
-            vendor,
-            casePrice,
-            quantity,
-            totalUnits,
-            notes
-        };
-        
-        try {
-            const response = await fetch(`/api/groups/${groupId}/shopping-list/${itemId}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify(updatedItem)
-            });
-            
-            if (!response.ok) {
-                // For demo purposes, update local array if API doesn't exist yet
-                const index = shoppingList.findIndex(i => i._id === itemId);
-                if (index !== -1) {
-                    shoppingList[index] = { ...shoppingList[index], ...updatedItem };
-                    displayShoppingList();
-                    toggleAddItemForm();
-                    
-                    // Reset save button
-                    const saveButton = document.getElementById('save-item-btn');
-                    saveButton.textContent = 'Add to Shopping List';
-                    delete saveButton.dataset.itemId;
-                    
-                    showToast('Success', 'Item updated', 'success');
-                }
-                return;
-            }
-            
-            // Update the item in the array
-            const updatedItemData = await response.json();
-            const index = shoppingList.findIndex(i => i._id === itemId);
-            if (index !== -1) {
-                shoppingList[index] = updatedItemData;
-            }
-            
-            displayShoppingList();
-            toggleAddItemForm();
-            
-            // Reset save button
-            const saveButton = document.getElementById('save-item-btn');
-            saveButton.textContent = 'Add to Shopping List';
-            delete saveButton.dataset.itemId;
-            
-            showToast('Success', 'Item updated', 'success');
-        } catch (error) {
-            console.error('Error updating shopping list item:', error);
-            // For demo purposes, update local array
-            const index = shoppingList.findIndex(i => i._id === itemId);
-            if (index !== -1) {
-                shoppingList[index] = { ...shoppingList[index], ...updatedItem };
-                displayShoppingList();
-                toggleAddItemForm();
-                
-                // Reset save button
-                const saveButton = document.getElementById('save-item-btn');
-                saveButton.textContent = 'Add to Shopping List';
-                delete saveButton.dataset.itemId;
-                
-                showToast('Success', 'Item updated', 'success');
-            }
-        } finally {
-            if (saveBtn){ saveBtn.dataset.loading=''; saveBtn.style.pointerEvents = prevPe || ''; saveBtn.style.opacity = prevOp || ''; if (prevHtml) saveBtn.innerHTML = prevHtml; }
-        }
-    }
-    
-    /**
-     * Delete a shopping list item
-     */
-    async function deleteShoppingListItem(itemId, btnEl) {
-        // Confirm before deleting
-        if (!confirm('Are you sure you want to delete this item?')) {
-            return;
-        }
-        let prevPe='', prevOp='', prevHtml='';
-        if (btnEl){ if (btnEl.dataset.loading === '1') return; btnEl.dataset.loading='1'; prevPe=btnEl.style.pointerEvents; prevOp=btnEl.style.opacity; prevHtml=btnEl.innerHTML; btnEl.style.pointerEvents='none'; btnEl.style.opacity='0.6'; try{ btnEl.innerHTML='Deleting...'; }catch(_){} }
-
-        try {
-            const response = await fetch(`/api/groups/${groupId}/shopping-list/${itemId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                }
-            });
-            
-            if (!response.ok) {
-                // For demo purposes, remove from local array if API doesn't exist yet
-                shoppingList = shoppingList.filter(item => item._id !== itemId);
-                displayShoppingList();
-                showToast('Success', 'Item deleted', 'success');
-                return;
-            }
-            
-            // Remove the item from the array
-            shoppingList = shoppingList.filter(item => item._id !== itemId);
-            displayShoppingList();
-            showToast('Success', 'Item deleted', 'success');
-        } catch (error) {
-            console.error('Error deleting shopping list item:', error);
-            // For demo purposes, remove from local array
-            shoppingList = shoppingList.filter(item => item._id !== itemId);
-            displayShoppingList();
-            showToast('Success', 'Item deleted', 'success');
-        } finally {
-            if (btnEl){ btnEl.dataset.loading=''; btnEl.style.pointerEvents = prevPe || ''; btnEl.style.opacity = prevOp || ''; if (prevHtml) btnEl.innerHTML = prevHtml; }
-        }
-    }
-    
-    // Sample data functions removed
-    
     /**
      * Load discussion board messages from the server
      */
@@ -1464,7 +1178,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            discussionMessages = await response.json();
+            const data = await response.json().catch(() => ({}));
+            if (Array.isArray(data)) {
+                discussionMessages = data;
+            } else if (Array.isArray(data?.messages)) {
+                discussionMessages = data.messages;
+            } else {
+                discussionMessages = [];
+            }
             displayDiscussionMessages();
         } catch (error) {
             console.error('Error loading discussion messages:', error);
@@ -1503,14 +1224,16 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const createdDate = new Date(message.createdAt);
             const formattedDate = createdDate.toLocaleString();
+            const authorName = escapeHtml((message.author && message.author.name) || 'Anonymous');
+            const contentSafe = escapeHtml(message.content || '');
             
-            messageEl.innerHTML = `
+            setHTMLSafe(messageEl, `
                 <div class="message-header">
-                    <strong>${message.author.name || 'Anonymous'}</strong>
+                    <strong>${authorName}</strong>
                     <small>${formattedDate}</small>
                 </div>
-                <div class="message-content">${message.content}</div>
-            `;
+                <div class="message-content">${contentSafe}</div>
+            `);
             
             discussionBoard.appendChild(messageEl);
         });
@@ -1534,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const sendBtn = document.getElementById('send-message-btn');
         let prevPe='', prevOp='', prevHtml='';
-        if (sendBtn){ if (sendBtn.dataset.loading === '1') return; sendBtn.dataset.loading='1'; prevPe=sendBtn.style.pointerEvents; prevOp=sendBtn.style.opacity; prevHtml=sendBtn.innerHTML; sendBtn.style.pointerEvents='none'; sendBtn.style.opacity='0.6'; try{ sendBtn.innerHTML='Sending...'; }catch(_){} }
+        if (sendBtn){ if (sendBtn.dataset.loading === '1') return; sendBtn.dataset.loading='1'; prevPe=sendBtn.style.pointerEvents; prevOp=sendBtn.style.opacity; prevHtml=sendBtn.innerHTML; sendBtn.style.pointerEvents='none'; sendBtn.style.opacity='0.6'; try{ sendBtn.textContent='Sending...'; }catch(_){} }
         
         const newMessage = {
             content,
@@ -1572,8 +1295,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            const addedMessage = await response.json();
-            discussionMessages.unshift(addedMessage);
+            const data = await response.json().catch(() => ({}));
+            const addedMessage = data?.message || data;
+            if (addedMessage) {
+                discussionMessages.unshift(addedMessage);
+            }
             displayDiscussionMessages();
             messageInput.value = '';
             showToast('Success', 'Message posted', 'success');
@@ -1639,7 +1365,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            groupEvents = await response.json();
+            const data = await response.json().catch(() => ({}));
+            if (Array.isArray(data)) {
+                groupEvents = data;
+            } else if (Array.isArray(data?.events)) {
+                groupEvents = data.events;
+            } else {
+                groupEvents = [];
+            }
             displayEvents();
         } catch (error) {
             console.error('Error loading events:', error);
@@ -1679,24 +1412,33 @@ document.addEventListener('DOMContentLoaded', function() {
             const eventDate = new Date(event.date);
             const formattedDate = eventDate.toLocaleDateString();
             const formattedTime = eventDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const eventTitle = escapeHtml(event.title || 'Untitled Event');
+            const eventLocation = escapeHtml(event.location || 'Location TBD');
+            const eventDescription = escapeHtml(event.description || '');
             
-            eventEl.innerHTML = `
-                <h5>${event.title}</h5>
+            setHTMLSafe(eventEl, `
+                <h5>${eventTitle}</h5>
                 <div><i class="fas fa-calendar"></i> ${formattedDate} at ${formattedTime}</div>
-                <div><i class="fas fa-map-marker-alt"></i> ${event.location || 'Location TBD'}</div>
-                <p>${event.description || ''}</p>
-                ${isAdmin || event.createdBy === currentUser?.id ? `
-                    <div class="event-actions">
-                        <button class="btn btn-sm btn-outline-primary edit-event" data-id="${event._id}">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger delete-event" data-id="${event._id}">
-                            <i class="fas fa-trash"></i> Cancel
-                        </button>
-                    </div>
-                ` : ''}
-            `;
+                <div><i class="fas fa-map-marker-alt"></i> ${eventLocation}</div>
+                <p>${eventDescription}</p>
+            `);
             
+            if (isAdmin || event.createdBy === currentUser?.id) {
+                const actionsEl = document.createElement('div');
+                actionsEl.className = 'event-actions';
+                
+                setHTMLSafe(actionsEl, `
+                    <button class="btn btn-sm btn-outline-primary edit-event" data-id="${event._id}">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger delete-event" data-id="${event._id}">
+                        <i class="fas fa-trash"></i> Cancel
+                    </button>
+                `);
+                
+                eventEl.appendChild(actionsEl);
+            }
+
             eventsList.appendChild(eventEl);
         });
         
@@ -1770,8 +1512,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            const addedEvent = await response.json();
-            groupEvents.push(addedEvent);
+            const data = await response.json().catch(() => ({}));
+            const addedEvent = data?.event || data;
+            if (addedEvent) {
+                groupEvents.push(addedEvent);
+            }
             displayEvents();
             toggleCreateEventForm();
             showToast('Success', 'Event created', 'success');
@@ -1985,7 +1730,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            groupMembers = await response.json();
+            const data = await response.json().catch(() => ({}));
+            if (Array.isArray(data)) {
+                groupMembers = data;
+            } else if (Array.isArray(data?.members)) {
+                groupMembers = data.members;
+            } else {
+                groupMembers = [];
+            }
             displayMembers();
         } catch (error) {
             console.error('Error loading members:', error);
@@ -2022,12 +1774,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const isAdmin = member.role === 'admin';
             const roleClass = isAdmin ? 'role-admin' : 'role-member';
             const roleText = isAdmin ? 'Admin' : 'Member';
-            
-            memberEl.innerHTML = `
-                <img src="${member.avatar || '/images/default-avatar.png'}" alt="${member.name}" class="member-avatar">
-                <div>${member.name}</div>
+            setHTMLSafe(memberEl, `
+                <img src="${escapeHtml(member.avatar || '/images/default-avatar.png')}" alt="${escapeHtml(member.name)}" class="member-avatar">
+                <div>${escapeHtml(member.name)}</div>
                 <span class="member-role ${roleClass}">${roleText}</span>
-            `;
+            `);
             
             membersGrid.appendChild(memberEl);
         });
@@ -2104,4 +1855,8 @@ document.addEventListener('DOMContentLoaded', function() {
         bsToast.show();
     }
 });
+
+
+
+
 

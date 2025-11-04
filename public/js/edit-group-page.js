@@ -1,6 +1,16 @@
 // public/js/edit-group-page.js
 (function(){
   document.addEventListener('DOMContentLoaded', function(){
+    function setHTMLSafe(el, html){
+      if (!el) return;
+      try {
+        if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+        el.innerHTML = String(html||'');
+      } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+    }
+    function escapeHtml(s){
+      try { return (window.SafeHTML && window.SafeHTML.escape) ? window.SafeHTML.escape(String(s||'')) : String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); } catch(_) { return String(s||''); }
+    }
     const groupId = window.__GROUP_ID__;
     if (!groupId){
       console.error('Edit Group: missing groupId');
@@ -28,36 +38,36 @@
       starterProductsList.innerHTML = '';
 
       if (!starterProducts.length){
-        starterProductsList.innerHTML = '<p class="text-muted mb-0">No starter products yet.</p>';
+        setHTMLSafe(starterProductsList, '<p class="text-muted mb-0">No starter products yet.</p>');
         return;
       }
 
       starterProducts.forEach((product, index) => {
         const card = document.createElement('div');
         card.className = 'starter-product-card';
-        card.innerHTML = `
+        setHTMLSafe(card, `
           <button type="button" class="btn btn-sm btn-outline-danger remove-product-btn" data-index="${index}">
             <i class="fas fa-times"></i>
           </button>
           <div class="row g-2">
             <div class="col-md-4">
               <label class="form-label">Product Name</label>
-              <input type="text" class="form-control starter-product-name" data-index="${index}" value="${product.name || ''}" placeholder="e.g., Organic Honey" />
+              <input type="text" class="form-control starter-product-name" data-index="${index}" value="${escapeHtml(product.name || '')}" placeholder="e.g., Organic Honey" />
             </div>
             <div class="col-md-4">
               <label class="form-label">Image URL</label>
-              <input type="url" class="form-control starter-product-image" data-index="${index}" value="${product.imageUrl || ''}" placeholder="https://example.com/image.jpg" />
+              <input type="url" class="form-control starter-product-image" data-index="${index}" value="${escapeHtml(product.imageUrl || '')}" placeholder="https://example.com/image.jpg" />
             </div>
             <div class="col-md-4">
               <label class="form-label">Product URL</label>
-              <input type="url" class="form-control starter-product-url" data-index="${index}" value="${product.productUrl || ''}" placeholder="https://example.com/listing" />
+              <input type="url" class="form-control starter-product-url" data-index="${index}" value="${escapeHtml(product.productUrl || '')}" placeholder="https://example.com/listing" />
             </div>
             <div class="col-12 mt-2">
               <label class="form-label">Note</label>
-              <textarea class="form-control starter-product-note" data-index="${index}" rows="2" placeholder="Why should members want this?">${product.note || ''}</textarea>
+              <textarea class="form-control starter-product-note" data-index="${index}" rows="2" placeholder="Why should members want this?">${escapeHtml(product.note || '')}</textarea>
             </div>
           </div>
-        `;
+        `);
         starterProductsList.appendChild(card);
       });
     }
@@ -318,7 +328,7 @@
         const saveBtn = document.getElementById('save-btn');
         if (saveBtn){
           saveBtn.disabled = true;
-          saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
+          setHTMLSafe(saveBtn, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...');
         }
 
         const token = (function(){ try { return localStorage.getItem('token') || localStorage.getItem('authToken'); } catch(_) { return null; } })();
@@ -355,7 +365,7 @@
         const saveBtn = document.getElementById('save-btn');
         if (saveBtn){
           saveBtn.disabled = false;
-          saveBtn.innerHTML = 'Save Changes';
+          saveBtn.textContent = 'Save Changes';
         }
       }
     }

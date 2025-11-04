@@ -3,6 +3,13 @@
   document.addEventListener('DOMContentLoaded', function(){
     try {
       console.log('Signup page loaded');
+      function setHTMLSafe(el, html){
+        if (!el) return;
+        try {
+          if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+          el.innerHTML = String(html||'');
+        } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+      }
       const urlParams = new URLSearchParams(window.location.search);
       const redirectUrl = urlParams.get('redirect');
       console.log('Redirect URL:', redirectUrl);
@@ -40,7 +47,7 @@
 
         const submitBtn = signupForm.querySelector('button[type="submit"]');
         const originalBtnText = submitBtn.innerHTML;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating Account...';
+        setHTMLSafe(submitBtn, '<i class="fas fa-spinner fa-spin"></i> Creating Account...');
         submitBtn.disabled = true;
 
         try {
@@ -67,7 +74,7 @@
           console.error('Signup error:', error);
           alert('An error occurred. Please try again later.');
         } finally {
-          submitBtn.innerHTML = originalBtnText;
+          setHTMLSafe(submitBtn, originalBtnText);
           submitBtn.disabled = false;
         }
       });

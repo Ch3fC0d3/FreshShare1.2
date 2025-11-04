@@ -1,4 +1,10 @@
 (function(){
+  function setHTMLSafe(el, html){
+    try {
+      if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+      el.innerHTML = String(html||'');
+    } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+  }
   document.addEventListener('DOMContentLoaded', init);
 
   async function init(){
@@ -25,7 +31,7 @@
 
   async function loadList(){
     const listEl = document.getElementById('vendor-list');
-    if (listEl) listEl.innerHTML = '<div class="list-group-item text-muted">Loading…</div>';
+    if (listEl) setHTMLSafe(listEl, '<div class="list-group-item text-muted">Loading…</div>');
     try {
       const res = await fetch('/api/marketplace/vendors');
       const json = await res.json();
@@ -33,7 +39,7 @@
       const rows = Array.isArray(json.data) ? json.data : [];
       renderList(rows);
     } catch (e) {
-      if (listEl) listEl.innerHTML = `<div class="list-group-item text-danger">${escapeHtml(e && e.message || 'Failed to load')}</div>`;
+      if (listEl) setHTMLSafe(listEl, `<div class="list-group-item text-danger">${escapeHtml(e && e.message || 'Failed to load')}</div>`);
     }
   }
 
@@ -42,13 +48,13 @@
     if (!listEl) return;
     listEl.innerHTML = '';
     if (!rows.length){
-      listEl.innerHTML = '<div class="list-group-item text-muted">No vendors yet. Click New to add one.</div>';
+      setHTMLSafe(listEl, '<div class="list-group-item text-muted">No vendors yet. Click New to add one.</div>');
       return;
     }
     rows.forEach(v => {
       const a = document.createElement('a');
       a.href = '#'; a.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
-      a.innerHTML = `<span>${escapeHtml(v.name || '(Unnamed)')}</span>`;
+      setHTMLSafe(a, `<span>${escapeHtml(v.name || '(Unnamed)')}</span>`);
       a.addEventListener('click', (e) => { e.preventDefault(); editExisting(v); });
       listEl.appendChild(a);
     });

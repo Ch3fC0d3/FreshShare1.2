@@ -19,20 +19,33 @@ function getCookie(name) {
   return null;
 }
 
+function getAuthToken() {
+  const cookieToken = getCookie('token');
+  if (cookieToken) {
+    return cookieToken;
+  }
+  try {
+    return window.localStorage ? window.localStorage.getItem('token') : null;
+  } catch (err) {
+    console.warn('local-auth: unable to read token from localStorage', err);
+    return null;
+  }
+}
+
 function normalizeAuthHeader(headers) {
   if (!headers) {
     return;
   }
 
-  const cookieToken = getCookie('token');
+  const authToken = getAuthToken();
 
   if (typeof headers.get === 'function' && typeof headers.set === 'function') {
     const existing = headers.get('Authorization') || headers.get('authorization');
     if (!existing) {
       return;
     }
-    if (cookieToken) {
-      headers.set('Authorization', `Bearer ${cookieToken}`);
+    if (authToken) {
+      headers.set('Authorization', `Bearer ${authToken}`);
     } else {
       headers.delete('Authorization');
     }
@@ -44,8 +57,8 @@ function normalizeAuthHeader(headers) {
     if (index === -1) {
       return;
     }
-    if (cookieToken) {
-      headers[index][1] = `Bearer ${cookieToken}`;
+    if (authToken) {
+      headers[index][1] = `Bearer ${authToken}`;
     } else {
       headers.splice(index, 1);
     }
@@ -58,8 +71,8 @@ function normalizeAuthHeader(headers) {
     return;
   }
 
-  if (cookieToken) {
-    headers[authKey] = `Bearer ${cookieToken}`;
+  if (authToken) {
+    headers[authKey] = `Bearer ${authToken}`;
   } else {
     delete headers[authKey];
   }
@@ -123,13 +136,42 @@ window.fetch = function(url, options) {
       });
     }
     
-    if (options && options.headers) {
+    if (!options) {
+      options = {};
+    }
+
+    const token = getAuthToken();
+
+    if (token) {
+      if (!options.headers) {
+        options.headers = {
+          Authorization: `Bearer ${token}`
+        };
+      } else if (typeof options.headers.set === 'function' && typeof options.headers.get === 'function') {
+        if (!options.headers.get('Authorization')) {
+          options.headers.set('Authorization', `Bearer ${token}`);
+        }
+      } else if (Array.isArray(options.headers)) {
+        const hasAuth = options.headers.some(([key]) => String(key).toLowerCase() === 'authorization');
+        if (!hasAuth) {
+          options.headers.push(['Authorization', `Bearer ${token}`]);
+        }
+      } else {
+        const headerKeys = Object.keys(options.headers);
+        const authKey = headerKeys.find((key) => key.toLowerCase() === 'authorization');
+        if (!authKey) {
+          options.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    }
+
+    if (options.headers) {
       normalizeAuthHeader(options.headers);
       const headerPreview = (() => {
-        const token = getCookie('token');
-        return token ? token.substring(0, 20) + '...' : '(cookie missing)';
+        const previewToken = getAuthToken();
+        return previewToken ? previewToken.substring(0, 20) + '...' : '(token missing)';
       })();
-      console.log('local-auth: normalized Authorization header to match cookie:', headerPreview);
+      console.log('local-auth: normalized Authorization header to match cookie/localStorage:', headerPreview);
     }
   }
   

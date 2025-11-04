@@ -54,7 +54,7 @@
       const el = document.getElementById('editListingAlert');
       if (!el) return;
       el.className = `alert alert-${type}`;
-      el.innerHTML = html;
+      setHTMLSafe(el, html);
       el.style.display = 'block';
       try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(_) {}
     }
@@ -75,7 +75,7 @@
       }
       if (po && po.enabled){ rows.push(`<div>Per-Piece: Case #<strong>${po.currentCaseNumber || 1}</strong> • Remaining: <strong>${po.currentCaseRemaining ?? 0}</strong> / ${po.caseSize || 0}${typeof po.userPieces === 'number' ? ` • Your pieces: <strong>${po.userPieces}</strong>` : ''}</div>`); }
       else { rows.push('<div>Per-Piece: <span class="text-muted">Disabled</span></div>'); }
-      commitmentsContent.innerHTML = rows.join('');
+      setHTMLSafe(commitmentsContent, rows.join(''));
       if (cancelGbBtn) cancelGbBtn.style.display = (gb && gb.enabled && Number(gb.userCommit || 0) > 0) ? '' : 'none';
       if (cancelPoBtn) cancelPoBtn.style.display = (po && po.enabled && Number(po.userPieces || 0) > 0) ? '' : 'none';
     }
@@ -97,7 +97,7 @@
       cancelGbBtn.addEventListener('click', async () => {
         const btn = cancelGbBtn; if (btn.dataset.loading === '1') return;
         btn.dataset.loading='1'; const prevPe = btn.style.pointerEvents; const prevOp = btn.style.opacity; const prevHtml = btn.innerHTML;
-        btn.style.pointerEvents='none'; btn.style.opacity='0.6'; try { btn.innerHTML = 'Canceling...'; } catch(_) {}
+        btn.style.pointerEvents='none'; btn.style.opacity='0.6'; try { btn.textContent = 'Canceling...'; } catch(_) {}
         try {
           const res = await fetch(`/api/marketplace/${LISTING_ID}/groupbuy/commit`, { method: 'DELETE' });
           const json = await res.json().catch(() => ({}));
@@ -212,6 +212,20 @@
 
     function escapeHtml(s){ try { return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); } catch(_) { return String(s||''); } }
 
+    // Safely set HTML using DOMPurify / SafeHTML
+    function setHTMLSafe(el, html){
+      if (!el) return;
+      try {
+        if (window.SafeHTML && typeof window.SafeHTML.sanitize === 'function'){
+          el.innerHTML = window.SafeHTML.sanitize(String(html || ''));
+        } else if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function'){
+          el.innerHTML = window.DOMPurify.sanitize(String(html || ''));
+        } else {
+          el.innerHTML = String(html || '');
+        }
+      } catch(_){ try { el.textContent = String(html || ''); } catch(__){} }
+    }
+
     function openVendorQuickPick(){
       try {
         if (!vendorQuickPickModal) return;
@@ -266,7 +280,7 @@
       const end = start + vendorQuickPickPerPage;
       const pageRows = filtered.slice(start, end);
 
-      if (pageRows.length === 0){ vendorQuickPickList.innerHTML = '<div class="p-3 text-muted">No matches</div>'; renderVendorQuickPickPagination(); return; }
+      if (pageRows.length === 0){ setHTMLSafe(vendorQuickPickList, '<div class="p-3 text-muted">No matches</div>'); renderVendorQuickPickPagination(); return; }
       vendorQuickPickList.innerHTML = '';
       pageRows.forEach((v, idx) => {
         const a = document.createElement('a'); a.href = '#'; a.className = 'list-group-item list-group-item-action'; a.dataset.index = String(idx);
@@ -276,7 +290,7 @@
         const cityStateHtml = highlightHtml(cityState, qRaw);
         const contactBits = [v.contactEmail, v.contactPhone].filter(Boolean).join(' • ');
         const contactHtml = highlightHtml(contactBits, qRaw);
-        a.innerHTML = `<div class="d-flex flex-column"><strong>${nameHtml}</strong><span class="text-muted small">${cityStateHtml}${contactBits ? ' • ' + contactHtml : ''}</span></div>`;
+        setHTMLSafe(a, `<div class="d-flex flex-column"><strong>${nameHtml}</strong><span class="text-muted small">${cityStateHtml}${contactBits ? ' • ' + contactHtml : ''}</span></div>`);
         a.addEventListener('click', (e) => { e.preventDefault(); chooseVendor(v); });
         vendorQuickPickList.appendChild(a);
       });
@@ -362,11 +376,11 @@
           pager.className = 'd-flex align-items-center justify-content-between mt-2';
           list.parentElement.appendChild(pager);
         }
-        pager.innerHTML = `
+        setHTMLSafe(pager, `
           <button type=\"button\" class=\"btn btn-sm btn-outline-secondary\" id=\"vendorQuickPickPrev\" ${vendorQuickPickPage <= 1 ? 'disabled' : ''}>Prev</button>
           <div class=\"small text-muted\">Page ${vendorQuickPickPage} of ${vendorQuickPickTotalPages}</div>
           <button type=\"button\" class=\"btn btn-sm btn-outline-secondary\" id=\"vendorQuickPickNext\" ${vendorQuickPickPage >= vendorQuickPickTotalPages ? 'disabled' : ''}>Next</button>
-        `;
+        `);
         const prev = document.getElementById('vendorQuickPickPrev');
         const next = document.getElementById('vendorQuickPickNext');
         if (prev) prev.addEventListener('click', () => { if (vendorQuickPickPage > 1){ vendorQuickPickPage--; vendorQuickPickFocusedIndex = 0; renderVendorQuickPickList(); } });
@@ -454,7 +468,7 @@
       if (submitBtn && submitBtn.dataset.loading !== '1'){
         submitBtn.dataset.loading = '1'; prevPe = submitBtn.style.pointerEvents; prevOp = submitBtn.style.opacity; prevHtml = submitBtn.innerHTML;
         submitBtn.style.pointerEvents = 'none'; submitBtn.style.opacity = '0.6';
-        try { submitBtn.innerHTML = 'Saving...'; } catch(_) {}
+        try { submitBtn.textContent = 'Saving...'; } catch(_) {}
       }
       try {
         const res = await fetch(`/api/marketplace/${LISTING_ID}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...AUTH_HEADERS }, body: JSON.stringify(body) });

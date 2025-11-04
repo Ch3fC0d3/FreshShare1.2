@@ -6,6 +6,13 @@
 (function() {
     // Wait for the login form to be available
     document.addEventListener('DOMContentLoaded', function() {
+        function setHTMLSafe(el, html){
+            if (!el) return;
+            try {
+                if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+                el.innerHTML = String(html||'');
+            } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+        }
         const loginForm = document.getElementById('loginForm');
         
         if (loginForm) {
@@ -23,7 +30,7 @@
                     // Show loading state
                     const submitBtn = this.querySelector('button[type="submit"]');
                     const originalBtnText = submitBtn.innerHTML;
-                    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+                    setHTMLSafe(submitBtn, '<i class="fas fa-spinner fa-spin"></i> Logging in...');
                     submitBtn.disabled = true;
                     
                     console.log('Sending login request...');
@@ -83,7 +90,7 @@
                         errorMessage.classList.remove('d-none');
                         
                         // Reset button
-                        submitBtn.innerHTML = originalBtnText;
+                        setHTMLSafe(submitBtn, originalBtnText);
                         submitBtn.disabled = false;
                     }
                 } catch (error) {
@@ -94,7 +101,7 @@
                     
                     // Reset button
                     const submitBtn = this.querySelector('button[type="submit"]');
-                    submitBtn.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Login';
+                    setHTMLSafe(submitBtn, '<i class="fas fa-sign-in-alt me-2"></i>Login');
                     submitBtn.disabled = false;
                 }
             });

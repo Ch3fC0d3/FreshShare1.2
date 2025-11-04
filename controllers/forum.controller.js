@@ -10,7 +10,8 @@ function getUserFromReq(req){
     const authHeader = req.headers && req.headers.authorization;
     const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
     if (rawToken) {
-      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+      const authConfig = require('../config/auth.config');
+      const decoded = jwt.verify(rawToken, authConfig.secret);
       if (decoded && decoded.id) return { id: decoded.id };
     }
   } catch(_) {}
@@ -31,9 +32,38 @@ exports.listPosts = async (req, res) => {
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || '10', 10)));
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
-      ForumPost.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      ForumPost.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit)
+        .populate('createdBy', 'username profileImage')
+        .lean(),
       ForumPost.countDocuments({})
     ]);
+    
+    // Fallback: For posts without createdBy, try to look up user by authorName
+    const User = require('../models/user.model');
+    for (const item of items) {
+      if (!item.createdBy && item.authorName) {
+        try {
+          console.log('[forum.controller] Looking up user by authorName:', item.authorName);
+          const foundUser = await User.findOne({ username: item.authorName })
+            .select('username profileImage')
+            .lean();
+          if (foundUser) {
+            console.log('[forum.controller] Found user:', foundUser.username, 'with image:', foundUser.profileImage);
+            item.createdBy = foundUser;
+          } else {
+            console.log('[forum.controller] User not found for authorName:', item.authorName);
+          }
+        } catch(err) {
+          console.error('[forum.controller] Error looking up user:', err);
+        }
+      } else {
+        console.log('[forum.controller] Post already has createdBy or no authorName:', {
+          hasCreatedBy: !!item.createdBy,
+          authorName: item.authorName
+        });
+      }
+    }
+    
     // attach liked state for current user
     if (user && user.id && items.length){
       const ids = items.map(it => it._id);
@@ -43,6 +73,7 @@ exports.listPosts = async (req, res) => {
         items.forEach(it => { if (likedSet.has(String(it._id))) it.liked = true; });
       } catch(_) {}
     }
+    
     return res.status(200).json({ success: true, data: items, page, limit, total });
   } catch (e) {
     return res.status(500).json({ success: false, message: e && e.message ? e.message : 'Failed to load posts' });
@@ -72,7 +103,21 @@ exports.createPost = async (req, res) => {
       authorName: (req.body && cleanStr(req.body.authorName, 80)) || (res.locals && res.locals.user && res.locals.user.username) || ''
     });
 
-    return res.status(201).json({ success: true, data: { id: String(doc._id), title: doc.title, content: doc.content, category: doc.category, createdAt: doc.createdAt, authorName: doc.authorName || '' } });
+    // Populate user data for response
+    const populated = await ForumPost.findById(doc._id).populate('createdBy', 'username profileImage').lean();
+    
+    return res.status(201).json({ 
+      success: true, 
+      data: { 
+        id: String(doc._id), 
+        title: doc.title, 
+        content: doc.content, 
+        category: doc.category, 
+        createdAt: doc.createdAt, 
+        authorName: doc.authorName || (populated && populated.createdBy && populated.createdBy.username) || '',
+        createdBy: populated && populated.createdBy ? populated.createdBy : null
+      } 
+    });
   } catch (e) {
     return res.status(500).json({ success: false, message: e && e.message ? e.message : 'Failed to create post' });
   }
@@ -86,9 +131,27 @@ exports.listComments = async (req, res) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || '20', 10)));
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
-      ForumComment.find({ postId }).sort({ createdAt: 1 }).skip(skip).limit(limit).lean(),
+      ForumComment.find({ postId }).sort({ createdAt: 1 }).skip(skip).limit(limit)
+        .populate('createdBy', 'username profileImage')
+        .lean(),
       ForumComment.countDocuments({ postId })
     ]);
+    
+    // Fallback: For comments without createdBy, try to look up user by authorName
+    const User = require('../models/user.model');
+    for (const item of items) {
+      if (!item.createdBy && item.authorName) {
+        try {
+          const foundUser = await User.findOne({ username: item.authorName })
+            .select('username profileImage')
+            .lean();
+          if (foundUser) {
+            item.createdBy = foundUser;
+          }
+        } catch(_) {}
+      }
+    }
+    
     return res.status(200).json({ success: true, data: items, page, limit, total });
   } catch (e) {
     return res.status(500).json({ success: false, message: e && e.message ? e.message : 'Failed to load comments' });
@@ -108,7 +171,19 @@ exports.addComment = async (req, res) => {
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
     const doc = await ForumComment.create({ postId, content, createdBy: user && user.id ? user.id : null, authorName });
     try { await ForumPost.updateOne({ _id: postId }, { $inc: { commentsCount: 1 } }); } catch(_) {}
-    return res.status(201).json({ success: true, data: { id: String(doc._id), postId: String(doc.postId), content: doc.content, createdAt: doc.createdAt, authorName: doc.authorName || '' } });
+    
+    // Populate user data for response
+    const populated = await ForumComment.findById(doc._id).populate('createdBy', 'username profileImage').lean();
+    const responseData = {
+      id: String(doc._id),
+      postId: String(doc.postId),
+      content: doc.content,
+      createdAt: doc.createdAt,
+      authorName: doc.authorName || (populated && populated.createdBy && populated.createdBy.username) || '',
+      createdBy: populated && populated.createdBy ? populated.createdBy : null
+    };
+    
+    return res.status(201).json({ success: true, data: responseData });
   } catch (e) {
     return res.status(500).json({ success: false, message: e && e.message ? e.message : 'Failed to add comment' });
   }

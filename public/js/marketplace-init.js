@@ -2,6 +2,65 @@
 // Initializes view buttons and lazy-loading on the marketplace page
 (function(){
   document.addEventListener('DOMContentLoaded', function() {
+    const formEl = document.getElementById('marketplaceFiltersForm');
+    if (formEl) {
+      const submitForm = () => {
+        try {
+          const formData = new FormData(formEl);
+          const params = new URLSearchParams();
+          // Handle multi-value categories
+          formData.forEach((value, key) => {
+            if (key === 'category') {
+              params.append(key, value);
+            } else if (key === 'isOrganic') {
+              params.set(key, 'true');
+            } else if (value !== null && String(value).trim() !== '') {
+              params.set(key, String(value).trim());
+            }
+          });
+          const query = params.toString();
+          const baseUrl = window.location.pathname || '/marketplace';
+          const next = query ? `${baseUrl}?${query}` : baseUrl;
+          window.location.assign(next);
+        } catch (e) {
+          console.error('Failed to submit marketplace filters form', e);
+          formEl.submit();
+        }
+      };
+
+      formEl.addEventListener('submit', function(ev){
+        ev.preventDefault();
+        submitForm();
+      });
+
+      const sortSelect = formEl.querySelector('select[name="sortBy"]');
+      if (sortSelect) {
+        sortSelect.addEventListener('change', submitForm);
+      }
+
+      const clearBtn = document.getElementById('filtersClearBtn');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+          window.location.assign('/marketplace');
+        });
+      }
+
+      const resetBtn = document.getElementById('filtersResetBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          try {
+            formEl.reset();
+          } catch (_) {}
+          window.location.assign('/marketplace');
+        });
+      }
+
+      const organicCheckbox = formEl.querySelector('input[name="isOrganic"]');
+      if (organicCheckbox) {
+        organicCheckbox.addEventListener('change', submitForm);
+      }
+    }
+
     // Show toast if returning from an order confirmation
     try {
       const flag = localStorage.getItem('orderJustPlaced');

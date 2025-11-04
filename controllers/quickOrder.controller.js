@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const authConfig = require('../config/auth.config');
 const FileLogger = require('../file-logger');
 const logger = new FileLogger('orders.log');
 const QuickOrder = require('../models/quick-order.model');
@@ -12,7 +13,7 @@ function getUserId(req) {
     const authHeader = req.headers && req.headers.authorization;
     const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
     if (rawToken) {
-      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+      const decoded = jwt.verify(rawToken, (authConfig && authConfig.secret) || process.env.JWT_SECRET);
       if (decoded && decoded.id) return decoded.id;
     }
   } catch (_) {}

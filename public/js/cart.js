@@ -2,6 +2,13 @@
 (function(){
   function qs(sel, ctx=document){ return ctx.querySelector(sel); }
   function ce(tag, cls){ const el = document.createElement(tag); if (cls) el.className = cls; return el; }
+  function setHTMLSafe(el, html){
+    if (!el) return;
+    try {
+      if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+      el.innerHTML = String(html||'');
+    } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+  }
   function getAuthHeaders(){
     try {
       // Try multiple storage locations
@@ -101,7 +108,7 @@
       // User not authenticated, show empty cart
       list.innerHTML = '';
       const empty = ce('div','mycart-empty');
-      empty.innerHTML = '<i class="fas fa-user-lock"></i><div>Please log in to view your cart</div>';
+      setHTMLSafe(empty, '<i class="fas fa-user-lock"></i><div>Please log in to view your cart</div>');
       list.appendChild(empty);
       
       // Update badge count to 0
@@ -130,7 +137,7 @@
     list.innerHTML = '';
     if (!items.length){
       const empty = ce('div','mycart-empty');
-      empty.innerHTML = '<i class="fas fa-box-open"></i><div>No reservations yet</div>';
+      setHTMLSafe(empty, '<i class="fas fa-box-open"></i><div>No reservations yet</div>');
       list.appendChild(empty);
     } else {
       items.forEach(it => {
@@ -148,7 +155,7 @@
         const priceDiv = ce('div','price');
         priceDiv.textContent = `$${unit.toFixed(2)} ${unitLabel}`;
         const subtotalDiv = ce('div','subtotal');
-        subtotalDiv.innerHTML = `<span class="label">Subtotal:</span> $${lineSubtotal.toFixed(2)} <span class="mult">(${Number(it.pieces||0)} × $${unit.toFixed(2)})</span>`;
+        setHTMLSafe(subtotalDiv, `<span class="label">Subtotal:</span> $${lineSubtotal.toFixed(2)} <span class="mult">(${Number(it.pieces||0)} × $${unit.toFixed(2)})</span>`);
         const sep = ce('div','sep');
 
         // Optional thumbnail

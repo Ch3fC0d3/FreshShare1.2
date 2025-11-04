@@ -2,6 +2,13 @@
 (function(){
   document.addEventListener('DOMContentLoaded', function(){
     try {
+      function setHTMLSafe(el, html){
+        if (!el) return;
+        try {
+          if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+          el.innerHTML = String(html||'');
+        } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+      }
       const token = (function(){ try { return localStorage.getItem('token'); } catch(_) { return null; } })();
       const groupsContainer = document.getElementById('groups-container');
       const groupCardTemplate = document.getElementById('group-card-template');
@@ -36,12 +43,12 @@
           if (data.success && Array.isArray(data.groups) && data.groups.length > 0){
             renderGroups(data.groups);
           } else {
-            if (groupsContainer) groupsContainer.innerHTML = '<p class="text-center w-100">No groups found. Be the first to create one!</p>';
+            if (groupsContainer) setHTMLSafe(groupsContainer, '<p class="text-center w-100">No groups found. Be the first to create one!</p>');
           }
         } catch (error){
           console.error('Error loading groups:', error);
           if (loadingIndicator) loadingIndicator.remove();
-          if (groupsContainer) groupsContainer.innerHTML = '<p class="text-center w-100">Failed to load groups. Please try again later.</p>';
+          if (groupsContainer) setHTMLSafe(groupsContainer, '<p class="text-center w-100">Failed to load groups. Please try again later.</p>');
         }
       }
 
@@ -62,9 +69,7 @@
             groupsContainer.appendChild(node);
           } catch (e){ console.error('Render group error:', e); }
         });
-        if (groups.length === 0){
-          groupsContainer.innerHTML = '<p class="text-center w-100">No groups found. Be the first to create one!</p>';
-        }
+        if (groups.length === 0){ setHTMLSafe(groupsContainer, '<p class="text-center w-100">No groups found. Be the first to create one!</p>'); }
       }
 
       function getGroupImage(category){

@@ -2,8 +2,9 @@ const jwt = require('jsonwebtoken');
 const db = require('../models');
 const User = db.user;
 
-// Retrieve JWT secret from environment or use a default
-const JWT_SECRET = process.env.JWT_SECRET || "bezkoder-secret-key";
+// Retrieve JWT secret from shared config or environment
+const authConfig = require('../config/auth.config');
+const JWT_SECRET = (authConfig && authConfig.secret) || process.env.JWT_SECRET;
 
 /**
  * Synchronize token between localStorage and cookies

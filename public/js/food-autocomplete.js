@@ -3,6 +3,19 @@
  * Provides autocomplete functionality for food items using the USDA database
  */
 
+function setHTMLSafe(el, html){
+  if (!el) return;
+  try {
+    if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+    el.innerHTML = String(html||'');
+  } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+}
+function escapeHtml(s){
+  try { return String(s||'')
+    .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
+    .replaceAll('"','&quot;').replaceAll("'",'&#039;'); } catch(_) { return String(s||''); }
+}
+
 class FoodAutocomplete {
   constructor(inputElement, options = {}) {
     this.input = inputElement;
@@ -216,10 +229,12 @@ class FoodAutocomplete {
     this.results.forEach((item, index) => {
       const resultItem = document.createElement('div');
       resultItem.className = 'autocomplete-item';
-      resultItem.innerHTML = `
-        <div class="item-description">${item.description}</div>
-        ${item.category ? `<div class="item-category">${item.category}</div>` : ''}
-      `;
+      const desc = escapeHtml(item.description);
+      const cat = item.category ? `<div class="item-category">${escapeHtml(item.category)}</div>` : '';
+      setHTMLSafe(resultItem, `
+        <div class="item-description">${desc}</div>
+        ${cat}
+      `);
       
       // Add click event
       resultItem.addEventListener('click', () => {
@@ -244,12 +259,12 @@ class FoodAutocomplete {
   }
   
   showLoading() {
-    this.resultsContainer.innerHTML = '<div class="autocomplete-loading">Searching...</div>';
+    setHTMLSafe(this.resultsContainer, '<div class="autocomplete-loading">Searching...</div>');
     this.showResults();
   }
   
   showNoResults() {
-    this.resultsContainer.innerHTML = '<div class="autocomplete-no-results">No results found</div>';
+    setHTMLSafe(this.resultsContainer, '<div class="autocomplete-no-results">No results found</div>');
     this.showResults();
     this.results = [];
   }

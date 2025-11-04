@@ -14,9 +14,8 @@ const upcLogger = new FileLogger('upc-lookup.log');
 function getUserId(req) {
   if (req.user && (req.user.id || req.user._id)) return req.user.id || req.user._id;
   const primarySecret = (authConfig && authConfig.secret)
-    || process.env.JWT_SECRET
-    || 'bezkoder-secret-key';
-  const legacySecret = process.env.LEGACY_JWT_SECRET || 'freshShare-auth-secret';
+    || process.env.JWT_SECRET;
+  const legacySecret = process.env.LEGACY_JWT_SECRET;
 
   const maskToken = (token) => {
     if (!token || typeof token !== 'string') return '(none)';
@@ -30,7 +29,8 @@ function getUserId(req) {
       return jwt.verify(token, primarySecret);
     } catch (primaryErr) {
       try {
-        return jwt.verify(token, legacySecret);
+        if (legacySecret) return jwt.verify(token, legacySecret);
+        throw primaryErr;
       } catch (legacyErr) {
         console.warn('[marketplace.getUserId] JWT verification failed for both secrets', {
           primaryError: primaryErr && primaryErr.message,
@@ -668,7 +668,7 @@ exports.updateListing = async (req, res) => {
         const authHeader = req.headers && req.headers.authorization;
         const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
         if (rawToken) {
-          const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+          const decoded = jwt.verify(rawToken, (authConfig && authConfig.secret) || process.env.JWT_SECRET);
           if (decoded && decoded.id) return decoded.id;
         }
       } catch (e) {}
@@ -867,7 +867,7 @@ exports.deleteListing = async (req, res) => {
         const authHeader = req.headers && req.headers.authorization;
         const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
         if (rawToken) {
-          const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+          const decoded = jwt.verify(rawToken, (authConfig && authConfig.secret) || process.env.JWT_SECRET);
           if (decoded && decoded.id) return decoded.id;
         }
       } catch (_) {}

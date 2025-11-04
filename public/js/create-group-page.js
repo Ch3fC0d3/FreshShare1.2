@@ -5,6 +5,14 @@
       const form = document.getElementById('create-group-form');
       const cancelBtn = document.getElementById('cancel-btn');
 
+      function setHTMLSafe(el, html){
+        if (!el) return;
+        try {
+          if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+          el.innerHTML = String(html||'');
+        } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+      }
+
       // Debug authentication status widgets
       const cookieStatus = document.getElementById('cookie-status');
       const localStorageStatus = document.getElementById('localstorage-status');
@@ -14,7 +22,7 @@
       // Check cookie token
       const hasCookieToken = document.cookie.includes('token');
       if (cookieStatus){
-        cookieStatus.innerHTML = `<strong>Cookie Token:</strong> ${hasCookieToken ? 'Present' : 'Not found'}`;
+        setHTMLSafe(cookieStatus, `<strong>Cookie Token:</strong> ${hasCookieToken ? 'Present' : 'Not found'}`);
         cookieStatus.style.color = hasCookieToken ? 'green' : 'red';
       }
 
@@ -22,7 +30,7 @@
       let localToken = '';
       try { localToken = localStorage.getItem('token') || ''; } catch(_) { localToken = ''; }
       if (localStorageStatus){
-        localStorageStatus.innerHTML = `<strong>LocalStorage Token:</strong> ${localToken ? 'Present' : 'Not found'}`;
+        setHTMLSafe(localStorageStatus, `<strong>LocalStorage Token:</strong> ${localToken ? 'Present' : 'Not found'}`);
         localStorageStatus.style.color = localToken ? 'green' : 'red';
       }
 
@@ -35,11 +43,11 @@
               const c = cookies[i].trim();
               if (c.startsWith('token=')) { cookieToken = c.substring('token='.length); break; }
             }
-            tokenValue.innerHTML = `<strong>Cookie Token Value:</strong> ${cookieToken ? cookieToken.substring(0, 10) + '...' : 'None'}<br>` +
-                                   `<strong>LocalStorage Token Value:</strong> ${localToken ? localToken.substring(0, 10) + '...' : 'None'}`;
+            setHTMLSafe(tokenValue, `<strong>Cookie Token Value:</strong> ${cookieToken ? cookieToken.substring(0, 10) + '...' : 'None'}<br>` +
+                                   `<strong>LocalStorage Token Value:</strong> ${localToken ? localToken.substring(0, 10) + '...' : 'None'}`);
             debugToggle.textContent = 'Hide Token';
           } else {
-            tokenValue.innerHTML = '';
+            setHTMLSafe(tokenValue, '');
             debugToggle.textContent = 'Show Token';
           }
         });
@@ -60,14 +68,14 @@
         if (!starterProductsList) return;
         starterProductsList.innerHTML = '';
         if (starterProducts.length === 0){
-          starterProductsList.innerHTML = '<p class="text-muted mb-0">No starter products yet.</p>';
+          setHTMLSafe(starterProductsList, '<p class="text-muted mb-0">No starter products yet.</p>');
           return;
         }
 
         starterProducts.forEach((product, index) => {
           const card = document.createElement('div');
           card.className = 'starter-product-card';
-          card.innerHTML = `
+          setHTMLSafe(card, `
             <button type="button" class="btn btn-sm btn-outline-danger remove-product-btn" data-index="${index}">
               <i class="fas fa-times"></i>
             </button>
@@ -89,7 +97,7 @@
                 <textarea class="form-control starter-product-note" data-index="${index}" rows="2" placeholder="Why should members want this?">${product.note || ''}</textarea>
               </div>
             </div>
-          `;
+          `);
           starterProductsList.appendChild(card);
         });
       }
@@ -228,7 +236,7 @@
 
           if (scheduleErrors.length > 0){
             const el = document.getElementById('schedule-error');
-            if (el){ el.innerHTML = scheduleErrors.join(' '); el.style.display = 'block'; }
+            if (el){ setHTMLSafe(el, scheduleErrors.join(' ')); el.style.display = 'block'; }
             isValid = false;
           }
           if (!isValid) return;
@@ -265,7 +273,7 @@
               window.location.href = '/groups';
             } else if (response.status === 401){
               const debugInfo = document.getElementById('auth-debug');
-              if (debugInfo) debugInfo.innerHTML += '<div class="alert alert-danger">Server says you are not authenticated. Redirecting to login page...</div>';
+              if (debugInfo) debugInfo.insertAdjacentHTML('beforeend', '<div class="alert alert-danger">Server says you are not authenticated. Redirecting to login page...</div>');
               setTimeout(() => { window.location.href = respData.redirect || '/login?redirect=/create-group'; }, 2000);
             } else {
               if (respData.errors && Array.isArray(respData.errors)){

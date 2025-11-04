@@ -11,11 +11,12 @@ function getUserId(req) {
   if (req.userId) return String(req.userId);
   try {
     const jwt = require('jsonwebtoken');
+    const authConfig = require('../../config/auth.config');
     const tokenFromCookie = req.cookies && req.cookies.token;
     const authHeader = req.headers && req.headers.authorization;
     const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
     if (rawToken) {
-      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+      const decoded = jwt.verify(rawToken, (authConfig && authConfig.secret) || process.env.JWT_SECRET);
       if (decoded && decoded.id) return String(decoded.id);
     }
   } catch (_) {}

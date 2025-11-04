@@ -6,6 +6,8 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
+// (moved lightweight app health route below after app initialization)
+
 process.on('unhandledRejection', (err) => {
   console.error('UNHANDLED REJECTION! 💥 Shutting down...');
   console.error('Error details:', err.name, err.message);
@@ -21,10 +23,9 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const dbConfig = require('./config/db.config');
-const authConfig = require('./config/auth.config');
 const fs = require('fs');
 
-// Load environment variables from .env file
+// Load environment variables from .env file BEFORE requiring auth.config
 const dotenv = require('dotenv');
 const envPath = path.resolve(__dirname, '.env');
 console.log('Loading environment variables from:', envPath);
@@ -50,6 +51,9 @@ if (fs.existsSync(envPath)) {
   console.error('.env file not found at path:', envPath);
   dotenv.config(); // Fallback to default dotenv behavior
 }
+
+// Now that env is loaded, require auth.config
+const authConfig = require('./config/auth.config');
 
 const app = express();
 // Use port 3002 to ensure consistency with frontend JS in local-auth.js
@@ -213,15 +217,19 @@ app.use(async (req, res, next) => {
         // Verify token using the same secret as in auth.config.js
         console.log('[globalAuth] verifying token with primary secret. Token length:', token.length);
         console.log('[globalAuth] token preview:', mask(token));
-        const primarySecret = (authConfig && authConfig.secret) || process.env.JWT_SECRET || 'bezkoder-secret-key';
-        const legacySecret = process.env.LEGACY_JWT_SECRET || 'freshShare-auth-secret';
+        const primarySecret = (authConfig && authConfig.secret) || process.env.JWT_SECRET;
+        const legacySecret = process.env.LEGACY_JWT_SECRET;
         let decoded = null;
         try {
           decoded = jwt.verify(token, primarySecret);
         } catch (primaryErr) {
           console.warn('[globalAuth] primary JWT verification failed, attempting legacy secret:', primaryErr && primaryErr.message);
-          decoded = jwt.verify(token, legacySecret);
-          console.log('[globalAuth] legacy JWT secret accepted token');
+          if (legacySecret) {
+            decoded = jwt.verify(token, legacySecret);
+            console.log('[globalAuth] legacy JWT secret accepted token');
+          } else {
+            throw primaryErr;
+          }
         }
         const User = require('./models/user.model');
         const user = await User.findById(decoded.id)
@@ -256,7 +264,7 @@ app.use(async (req, res, next) => {
             console.log('Token close to expiration, renewing for user:', user.username);
             
             // Generate new token with fresh expiration (7 days)
-            const newToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "bezkoder-secret-key", {
+            const newToken = jwt.sign({ id: user._id }, (authConfig && authConfig.secret) || process.env.JWT_SECRET, {
               expiresIn: 7 * 24 * 60 * 60 // 7 days
             });
             
@@ -316,28 +324,51 @@ app.get('/marketplace', async (req, res) => {
     // Fetch listings from the database
     const db = require('./models');
     const Listing = db.listing;
-    
-    // Get query parameters for filtering
-    const { 
-      category, 
-      minPrice, 
-      maxPrice, 
-      isOrganic, 
-      sortBy = 'latest',
-      search
-    } = req.query;
-    
+
+    // Extract query params (support arrays for categories)
+    const {
+      category: rawCategory,
+      minPrice: rawMinPrice,
+      maxPrice: rawMaxPrice,
+      isOrganic: rawOrganic,
+      sortBy: rawSort = 'latest',
+      search: rawSearch
+    } = req.query || {};
+
+    const selectedCategories = Array.isArray(rawCategory)
+      ? rawCategory
+      : (typeof rawCategory === 'string' && rawCategory.trim() !== '')
+        ? rawCategory.split(',')
+        : [];
+    const normalizedCategories = selectedCategories
+      .map(cat => String(cat).trim())
+      .filter(Boolean);
+
+    const minPriceNum = rawMinPrice !== undefined && rawMinPrice !== '' ? Number(rawMinPrice) : NaN;
+    const maxPriceNum = rawMaxPrice !== undefined && rawMaxPrice !== '' ? Number(rawMaxPrice) : NaN;
+    const sortBy = rawSort || 'latest';
+    const search = typeof rawSearch === 'string' ? rawSearch.trim() : '';
+    const organicSelected = rawOrganic !== undefined && !(rawOrganic === 'false' || rawOrganic === '0');
+
     // Build filter object
     const filter = {};
-    
-    if (category) filter.category = category;
-    if (isOrganic) filter.isOrganic = isOrganic === 'true';
-    if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice);
-      if (maxPrice) filter.price.$lte = Number(maxPrice);
+
+    if (normalizedCategories.length === 1) {
+      filter.category = normalizedCategories[0];
+    } else if (normalizedCategories.length > 1) {
+      filter.category = { $in: normalizedCategories };
     }
-    
+
+    if (rawOrganic !== undefined) {
+      filter.isOrganic = organicSelected;
+    }
+
+    if (!Number.isNaN(minPriceNum) || !Number.isNaN(maxPriceNum)) {
+      filter.price = {};
+      if (!Number.isNaN(minPriceNum)) filter.price.$gte = minPriceNum;
+      if (!Number.isNaN(maxPriceNum)) filter.price.$lte = maxPriceNum;
+    }
+
     // Add text search if search parameter is provided
     if (search) {
       filter.$text = { $search: search };
@@ -365,7 +396,7 @@ app.get('/marketplace', async (req, res) => {
     
     // Build sort object
     let sort = { createdAt: -1 }; // Default sort by newest
-    
+
     if (sortBy === 'price-asc') sort = { price: 1 };
     if (sortBy === 'price-desc') sort = { price: -1 };
     
@@ -380,10 +411,10 @@ app.get('/marketplace', async (req, res) => {
       title: 'FreshShare - Marketplace',
       listings: listings || [],
       filters: {
-        category,
-        minPrice,
-        maxPrice,
-        isOrganic,
+        category: normalizedCategories,
+        minPrice: !Number.isNaN(minPriceNum) ? String(minPriceNum) : '',
+        maxPrice: !Number.isNaN(maxPriceNum) ? String(maxPriceNum) : '',
+        isOrganic: rawOrganic !== undefined ? organicSelected : false,
         sortBy,
         search
       }
@@ -900,7 +931,24 @@ app.get('/api/health/db', async (req, res) => {
       ping: pingOk
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Health check failed', error: err.message });
+    res.status(500).json({ success: false, error: err && err.message });
+  }
+});
+
+// Lightweight app health (no DB dependency)
+app.get('/api/health/status', (req, res) => {
+  try {
+    res.status(200).json({
+      success: true,
+      name: 'FreshShare',
+      version: '1.0.0',
+      node: process.version,
+      uptimeSec: Math.floor(process.uptime()),
+      env: process.env.NODE_ENV || 'development',
+      port: PORT
+    });
+  } catch (e) {
+    res.status(500).json({ success: false });
   }
 });
 

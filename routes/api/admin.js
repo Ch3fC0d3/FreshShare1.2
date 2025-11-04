@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
+const os = require('os');
 const User = require('../../models/user.model');
 const Listing = require('../../models/listing.model');
 const QuickOrder = require('../../models/quick-order.model');
 const Message = require('../../models/message.model');
 const Vendor = require('../../models/vendor.model');
 const Role = require('../../models/role.model');
+const authConfig = require('../../config/auth.config');
 const FileLogger = require('../../file-logger');
 const adminLogger = new FileLogger('admin-actions.log');
 const fs = require('fs');
@@ -20,7 +23,7 @@ function getUserId(req) {
     const authHeader = req.headers && req.headers.authorization;
     const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
     if (rawToken) {
-      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+      const decoded = jwt.verify(rawToken, authConfig.secret);
       if (decoded && decoded.id) return String(decoded.id);
     }
   } catch (_) {}
@@ -60,6 +63,63 @@ router.get('/stats', async (req, res) => {
     return res.status(200).json({ success: true, data: { users, listings, orders, messages, vendors } });
   } catch (e) {
     return res.status(500).json({ success: false, message: 'Failed to fetch admin stats', error: e.message });
+  }
+});
+
+// GET /api/admin/system - application/runtime health snapshot
+router.get('/system', async (req, res) => {
+  try {
+    const uid = getUserId(req);
+    if (!uid) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const me = await User.findById(uid).select('roles').lean();
+    if (!(await isAdminUser(me))) return res.status(403).json({ success: false, message: 'Forbidden' });
+
+    const state = mongoose.connection.readyState;
+    const stateMap = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' };
+    let pingOk = false;
+    let pingMs = null;
+    if (state === 1) {
+      const started = Date.now();
+      try {
+        await mongoose.connection.db.admin().ping();
+        pingOk = true;
+        pingMs = Date.now() - started;
+      } catch (err) {
+        pingOk = false;
+        pingMs = Date.now() - started;
+      }
+    }
+
+    const memory = process.memoryUsage();
+    const loadAvg = os.loadavg ? os.loadavg() : [];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        generatedAt: new Date().toISOString(),
+        db: {
+          connected: state === 1,
+          state: stateMap[state] || String(state),
+          pingMs,
+          pingOk
+        },
+        node: {
+          uptimeSeconds: Math.floor(process.uptime()),
+          memory: {
+            rss: memory.rss,
+            heapUsed: memory.heapUsed,
+            heapTotal: memory.heapTotal
+          },
+          loadAverage: loadAvg
+        },
+        api: {
+          endpoint: '/api',
+          documented: true
+        }
+      }
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Failed to load system status', error: e.message });
   }
 });
  

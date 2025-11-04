@@ -7,6 +7,20 @@ const router = express.Router();
 const marketplaceController = require('../../controllers/marketplace.controller');
 const multer = require('multer');
 const path = require('path');
+const { body, param, validationResult } = require('express-validator');
+
+// Centralized validation handler (must be defined before first usage)
+function handleValidation(req, res, next) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: errors.array().map(e => e.msg || (`${e.param}: ${e.msg}`))
+    });
+  }
+  next();
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -44,7 +58,26 @@ router.post('/', (req, res, next) => {
     }
     next();
   });
-}, marketplaceController.createListing);
+},
+  [
+    body('title').isString().trim().isLength({ min: 1, max: 200 }),
+    body('description').optional().isString().trim().isLength({ max: 5000 }),
+    body('price').optional().isFloat({ min: 0 }),
+    body('priceUnit').optional().isString().trim().isLength({ max: 20 }),
+    body('category').optional().isString().trim().isLength({ max: 100 }),
+    body('quantity').optional().isInt({ min: 0 }),
+    body('caseSize').optional().isInt({ min: 0 }),
+    body('casePrice').optional().isFloat({ min: 0 }),
+    body('isOrganic').optional().isBoolean().toBoolean(),
+    body('upcCode').optional().isString().trim().isLength({ max: 64 }),
+    body('tags').optional(),
+    body('vendorId').optional().isString().trim(),
+    body('groupBuy').optional(),
+    body('pieceOrdering').optional()
+  ],
+  handleValidation,
+  marketplaceController.createListing
+);
 
 // Get all listings with optional filtering
 router.get('/', marketplaceController.getListings);
@@ -91,29 +124,105 @@ router.get('/food-search', marketplaceController.searchFoodItems);
 
 // Saved vendors for current user
 router.get('/vendors', marketplaceController.getMyVendors);
-router.post('/vendors', express.json(), marketplaceController.createVendor);
-router.put('/vendors/:id', express.json(), marketplaceController.updateVendor);
+
+router.post(
+  '/vendors',
+  express.json(),
+  [
+    body('name').isString().trim().isLength({ min: 1, max: 200 }),
+    body('website').optional().isString().trim().isLength({ max: 300 }),
+    body('contactEmail').optional().isString().trim().isEmail(),
+    body('contactPhone').optional().isString().trim().isLength({ max: 50 }),
+    body('address').optional().isString().trim().isLength({ max: 300 }),
+    body('city').optional().isString().trim().isLength({ max: 120 }),
+    body('state').optional().isString().trim().isLength({ max: 80 }),
+    body('zipCode').optional().isString().trim().isLength({ max: 20 }),
+    body('notes').optional().isString().trim().isLength({ max: 2000 })
+  ],
+  handleValidation,
+  marketplaceController.createVendor
+);
+
+router.put(
+  '/vendors/:id',
+  express.json(),
+  [
+    param('id').isString().trim().notEmpty(),
+    body('name').optional().isString().trim().isLength({ min: 1, max: 200 }),
+    body('website').optional().isString().trim().isLength({ max: 300 }),
+    body('contactEmail').optional().isString().trim().isEmail(),
+    body('contactPhone').optional().isString().trim().isLength({ max: 50 }),
+    body('address').optional().isString().trim().isLength({ max: 300 }),
+    body('city').optional().isString().trim().isLength({ max: 120 }),
+    body('state').optional().isString().trim().isLength({ max: 80 }),
+    body('zipCode').optional().isString().trim().isLength({ max: 20 }),
+    body('notes').optional().isString().trim().isLength({ max: 2000 })
+  ],
+  handleValidation,
+  marketplaceController.updateVendor
+);
 router.delete('/vendors/:id', marketplaceController.deleteVendor);
 
 // Listing templates (previous listings) for prefill
 router.get('/my-templates', marketplaceController.getMyListingTemplates);
 
 // Group buy endpoints
-router.get('/:id/groupbuy/status', marketplaceController.groupBuyStatus);
-router.post('/:id/groupbuy/commit', express.json(), marketplaceController.groupBuyCommit);
-router.delete('/:id/groupbuy/commit', marketplaceController.groupBuyCancel);
+router.get('/:id/groupbuy/status', [ param('id').isString().trim().notEmpty(), handleValidation ], marketplaceController.groupBuyStatus);
+router.post(
+  '/:id/groupbuy/commit',
+  express.json(),
+  [
+    param('id').isString().trim().notEmpty(),
+    body('cases').optional().isInt({ min: 1 })
+  ],
+  handleValidation,
+  marketplaceController.groupBuyCommit
+);
+router.delete('/:id/groupbuy/commit', [ param('id').isString().trim().notEmpty(), handleValidation ], marketplaceController.groupBuyCancel);
 
 // Per-piece ordering endpoints
-router.get('/:id/pieces/status', marketplaceController.pieceStatus);
-router.post('/:id/pieces', express.json(), marketplaceController.pieceSet);
-router.delete('/:id/pieces', marketplaceController.pieceCancel);
+router.get('/:id/pieces/status', [ param('id').isString().trim().notEmpty(), handleValidation ], marketplaceController.pieceStatus);
+router.post(
+  '/:id/pieces',
+  express.json(),
+  [
+    param('id').isString().trim().notEmpty(),
+    body('pieces').optional().isInt({ min: 0 }),
+    body('caseNumber').optional().isInt({ min: 1 })
+  ],
+  handleValidation,
+  marketplaceController.pieceSet
+);
+router.delete('/:id/pieces', [ param('id').isString().trim().notEmpty(), handleValidation ], marketplaceController.pieceCancel);
 router.get('/pieces/my', marketplaceController.myPieceReservations);
 
 // Get a single listing by ID
 router.get('/:id', marketplaceController.getListingById);
 
 // Update a listing
-router.put('/:id', marketplaceController.updateListing);
+router.put(
+  '/:id',
+  express.json(),
+  [
+    param('id').isString().trim().notEmpty(),
+    body('title').optional().isString().trim().isLength({ min: 1, max: 200 }),
+    body('description').optional().isString().trim().isLength({ max: 5000 }),
+    body('price').optional().isFloat({ min: 0 }),
+    body('priceUnit').optional().isString().trim().isLength({ max: 20 }),
+    body('category').optional().isString().trim().isLength({ max: 100 }),
+    body('quantity').optional().isInt({ min: 0 }),
+    body('caseSize').optional().isInt({ min: 0 }),
+    body('casePrice').optional().isFloat({ min: 0 }),
+    body('isOrganic').optional().isBoolean(),
+    body('upcCode').optional().isString().trim().isLength({ max: 64 }),
+    body('tags').optional(),
+    body('vendorId').optional().isString().trim(),
+    body('pieceOrdering').optional(),
+    body('groupBuy').optional()
+  ],
+  handleValidation,
+  marketplaceController.updateListing
+);
 
 // Delete a listing
 router.delete('/:id', marketplaceController.deleteListing);

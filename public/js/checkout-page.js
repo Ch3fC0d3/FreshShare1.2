@@ -3,6 +3,13 @@
 (function(){
   function qs(sel, ctx=document){ return ctx.querySelector(sel); }
   function ce(tag, cls){ const el = document.createElement(tag); if (cls) el.className = cls; return el; }
+  function setHTMLSafe(el, html){
+    if (!el) return;
+    try {
+      if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+      el.innerHTML = String(html||'');
+    } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+  }
 
   function getAuthHeaders(){
     try {
@@ -127,7 +134,7 @@
     btn.dataset.loading = '1';
     const prevPe = btn.style.pointerEvents, prevOp = btn.style.opacity, prevHtml = btn.innerHTML;
     btn.disabled = true; btn.style.pointerEvents = 'none'; btn.style.opacity = '0.6';
-    try { btn.innerHTML = '<i class="fas fa-shopping-cart"></i> Placing...'; } catch(_) {}
+    try { setHTMLSafe(btn, '<i class="fas fa-shopping-cart"></i> Placing...'); } catch(_) {}
     try {
       // Recompute summary to capture the latest items & total
       const { items, total } = await renderSummary();

@@ -26,16 +26,16 @@
     height: 100%;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 20px;
     padding: 0 20px;
-    position: relative;
 }
 
 /* Logo Styles */
 .fs-logo {
-    position: absolute;
-    left: 20px;
     display: flex;
     align-items: center;
+    flex-shrink: 0;
 }
 
 .fs-logo a {
@@ -63,16 +63,18 @@
 
 /* Navigation Styles */
 .fs-nav {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
     display: flex;
     align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .fs-nav-links {
     display: flex;
-    gap: 40px;
+    gap: 28px;
+    flex-wrap: nowrap;
+    justify-content: center;
 }
 
 .fs-nav-links a {
@@ -107,10 +109,15 @@
 
 /* Auth Button Styles */
 .fs-auth-buttons {
-    position: absolute;
-    right: 20px;
     display: flex;
-    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.fs-auth-buttons .admin-link {
+    margin-right: 8px;
 }
 
 .fs-btn {
@@ -135,18 +142,11 @@
 }
 
 .fs-btn-secondary {
-    background-color: transparent;
-    color: #63b175;
     border: 2px solid #63b175;
 }
 
 .fs-btn-secondary:hover {
     background-color: rgba(99, 177, 117, 0.1);
-}
-
-/* User Profile Styles */
-.fs-user-profile {
-    position: relative;
     display: flex;
     align-items: center;
     cursor: pointer;
@@ -233,8 +233,6 @@
     border: none;
     cursor: pointer;
     padding: 5px;
-    position: absolute;
-    right: 20px;
 }
 
 .fs-mobile-toggle span {
@@ -270,9 +268,29 @@
 }
 
 /* Responsive Styles */
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
+    .fs-header-container {
+        gap: 16px;
+        padding: 0 16px;
+    }
+
     .fs-nav-links {
-        gap: 20px;
+        gap: 22px;
+    }
+
+    .fs-auth-buttons {
+        gap: 10px;
+    }
+}
+
+@media (max-width: 1100px) {
+    .fs-nav-links {
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+
+    .fs-auth-buttons .fs-btn {
+        padding: 6px 14px;
     }
 }
 
@@ -291,6 +309,7 @@
 
     .fs-mobile-toggle {
         display: block;
+        margin-left: auto;
     }
 
     .fs-nav {
@@ -304,6 +323,7 @@
         padding: 20px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         display: none;
+        z-index: 999;
     }
 
     .fs-nav.active {

@@ -5,7 +5,7 @@ const User = db.user;
 
 // Retrieve JWT secret from shared auth config
 const JWT_SECRET = authConfig.secret;
-const LEGACY_JWT_SECRET = process.env.LEGACY_JWT_SECRET || 'freshShare-auth-secret';
+const LEGACY_JWT_SECRET = process.env.LEGACY_JWT_SECRET;
 
 const maskToken = (token) => {
   if (!token || typeof token !== 'string') return '(none)';
@@ -167,8 +167,8 @@ const verifyToken = (req, res, next) => {
     
     try {
       console.log('Attempting to verify token with legacy JWT secret');
+      if (!LEGACY_JWT_SECRET) throw new Error('Legacy JWT secret not configured');
       console.log('LEGACY_JWT_SECRET first 10 chars:', LEGACY_JWT_SECRET.substring(0, 10) + '...');
-      
       decoded = jwt.verify(tokenValue, LEGACY_JWT_SECRET);
       console.warn('Token verified using legacy JWT secret. Consider reissuing tokens.');
       console.log('Decoded token user ID (legacy):', decoded.id);

@@ -133,27 +133,6 @@
         white-space: pre-wrap;
     }
 
-    .shopping-list table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    .shopping-list th, .shopping-list td {
-        padding: 10px;
-        text-align: left;
-        border-bottom: 1px solid #eee;
-    }
-    
-    .shopping-list-actions {
-        width: 100px;
-    }
-    
-    .add-item-form {
-        margin-top: 20px;
-        padding-top: 20px;
-        border-top: 1px solid #eee;
-    }
-    
     .form-row {
         display: flex;
         flex-wrap: wrap;
@@ -504,91 +483,6 @@
                             <button type="button" class="btn btn-primary" id="submit-suggest-product-btn">Submit Suggestion</button>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Shopping List Section -->
-            <div class="group-section shopping-list">
-                <div class="section-header">
-                    <h3>Shopping List</h3>
-                    <button class="btn btn-sm btn-primary" id="add-item-toggle"><i class="fas fa-plus"></i> Create Listing</button>
-                </div>
-                <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-lg-between gap-2 mt-3">
-                    <div class="schedule-summary">
-                        <div><strong>Order by:</strong> <span id="order-by-date-display">Not set</span></div>
-                        <div><strong>Delivery date:</strong> <span id="delivery-date-display">Not set</span></div>
-                    </div>
-                    <div id="schedule-admin-actions" class="d-none">
-                        <button class="btn btn-outline-secondary btn-sm" id="edit-schedule-btn"><i class="fas fa-calendar-plus"></i> Edit schedule</button>
-                    </div>
-                </div>
-                <div id="schedule-form" class="card card-body mt-3" style="display: none;">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-3">
-                            <label for="order-by-input-day" class="form-label">Order by day</label>
-                            <select class="form-select" id="order-by-input-day">
-                                <option value="">Select day</option>
-                                <option value="Sunday">Sunday</option>
-                                <option value="Monday">Monday</option>
-                                <option value="Tuesday">Tuesday</option>
-                                <option value="Wednesday">Wednesday</option>
-                                <option value="Thursday">Thursday</option>
-                                <option value="Friday">Friday</option>
-                                <option value="Saturday">Saturday</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="order-by-input-time" class="form-label">Order by time</label>
-                            <input type="time" class="form-control" id="order-by-input-time">
-                        </div>
-                        <div class="col-md-3">
-                            <label for="delivery-day-input" class="form-label">Delivery day</label>
-                            <select class="form-select" id="delivery-day-input">
-                                <option value="">Select day</option>
-                                <option value="Sunday">Sunday</option>
-                                <option value="Monday">Monday</option>
-                                <option value="Tuesday">Tuesday</option>
-                                <option value="Wednesday">Wednesday</option>
-                                <option value="Thursday">Thursday</option>
-                                <option value="Friday">Friday</option>
-                                <option value="Saturday">Saturday</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="delivery-time-input" class="form-label">Delivery time</label>
-                            <input type="time" class="form-control" id="delivery-time-input">
-                        </div>
-                    </div>
-                    <div id="schedule-form-error" class="text-danger small mt-2" style="display: none;"></div>
-                    <div class="d-flex justify-content-end gap-2 mt-3">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cancel-schedule-btn">Cancel</button>
-                        <button type="button" class="btn btn-primary btn-sm" id="save-schedule-btn">Save schedule</button>
-                    </div>
-                </div>
-                
-                <!-- Order-By Warning Banner -->
-                <div id="order-by-warning" class="alert mt-3" style="display: none;"></div>
-                
-                <!-- Shopping List Table -->
-                <div class="table-responsive mt-3">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Product</th>
-                                <th>Vendor</th>
-                                <th>Case Price</th>
-                                <th>Quantity</th>
-                                <th>Total Units</th>
-                                <th class="shopping-list-actions">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="shopping-list-body">
-                            <!-- Shopping list items will be added here -->
-                        </tbody>
-                    </table>
-                </div>
-                <div id="empty-shopping-list" class="text-center py-4" style="display: none;">
-                    <p class="text-muted">No items in the shopping list yet.</p>
                 </div>
             </div>
 

@@ -26,6 +26,16 @@
     // Global state
     let selectedFiles = [];
     let tags = [];
+    // Safe HTML helpers
+    const setHTMLSafe = (el, html) => {
+      try {
+        if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+        el.innerHTML = String(html||'');
+      } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+    };
+    const escapeHtml = (s) => {
+      try { return (window.SafeHTML && window.SafeHTML.escape) ? window.SafeHTML.escape(String(s||'')) : String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); } catch(_) { return String(s||''); }
+    };
 
     // Elements
     const imageUploadContainer = document.getElementById('imageUploadContainer');
@@ -100,11 +110,11 @@
         pager.className = 'd-flex align-items-center justify-content-between mt-2';
         list.parentElement.appendChild(pager);
       }
-      pager.innerHTML = `
+      setHTMLSafe(pager, `
         <button type="button" class="btn btn-sm btn-outline-secondary" id="vendorQuickPickPrev" ${vendorQuickPickPage <= 1 ? 'disabled' : ''}>Prev</button>
         <div class="small text-muted">Page ${vendorQuickPickPage} of ${vendorQuickPickTotalPages}</div>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="vendorQuickPickNext" ${vendorQuickPickPage >= vendorQuickPickTotalPages ? 'disabled' : ''}>Next</button>
-      `;
+      `);
       const prev = document.getElementById('vendorQuickPickPrev');
       const next = document.getElementById('vendorQuickPickNext');
       if (prev) prev.addEventListener('click', () => { if (vendorQuickPickPage > 1){ vendorQuickPickPage--; vendorQuickPickFocusedIndex = 0; renderVendorQuickPickList(); } });
@@ -125,7 +135,12 @@
         reader.onload = function(e){
           const preview = document.createElement('div');
           preview.className = 'image-preview';
-          preview.innerHTML = `\n            <img src="${e.target.result}" alt="Preview">\n            <div class="remove-image" data-index="${selectedFiles.length - 1}">\n              <i class=\"fas fa-times\"></i>\n            </div>\n          `;
+          setHTMLSafe(preview, `
+            <img src="${escapeHtml(e.target.result)}" alt="Preview">
+            <div class="remove-image" data-index="${selectedFiles.length - 1}">
+              <i class=\"fas fa-times\"></i>
+            </div>
+          `);
           imagePreviewContainer.appendChild(preview);
           preview.querySelector('.remove-image').addEventListener('click', function(){
             const index = parseInt(this.dataset.index);
@@ -144,7 +159,12 @@
         reader.onload = function(e){
           const preview = document.createElement('div');
           preview.className = 'image-preview';
-          preview.innerHTML = `\n            <img src="${e.target.result}" alt="Preview">\n            <div class="remove-image" data-index="${index}">\n              <i class=\"fas fa-times\"></i>\n            </div>\n          `;
+          setHTMLSafe(preview, `
+            <img src="${escapeHtml(e.target.result)}" alt="Preview">
+            <div class="remove-image" data-index="${index}">
+              <i class=\"fas fa-times\"></i>
+            </div>
+          `);
           imagePreviewContainer.appendChild(preview);
           preview.querySelector('.remove-image').addEventListener('click', function(){ removeImage(index); });
         };
@@ -168,7 +188,10 @@
       tags.forEach((tag, index) => {
         const tagElement = document.createElement('div');
         tagElement.className = 'tag';
-        tagElement.innerHTML = `\n          <span>${tag}</span>\n          <i class=\"fas fa-times remove-tag\" data-index=\"${index}\"></i>\n        `;
+        setHTMLSafe(tagElement, `
+          <span>${escapeHtml(tag)}</span>
+          <i class=\"fas fa-times remove-tag\" data-index=\"${index}\"></i>
+        `);
         tagContainer.appendChild(tagElement);
         tagElement.querySelector('.remove-tag').addEventListener('click', function(){ removeTag(parseInt(this.dataset.index)); });
       });
@@ -202,7 +225,7 @@
     updatePriceBreakdown();
 
     // Saved Vendors, Templates, Groups
-    async function loadGroups(){ if (!groupSelect) return; try { const res = await fetch('/api/groups'); const json = await res.json(); const all = (json && json.success && Array.isArray(json.groups)) ? json.groups : []; MY_GROUPS = all.filter(g => { const members = Array.isArray(g.members) ? g.members : []; const admins = Array.isArray(g.admins) ? g.admins : []; const memberHit = members.some(m => String(m._id) === String(CURRENT_USER_ID)); const adminHit = admins.some(a => String(a._id) === String(CURRENT_USER_ID)); const creatorHit = g.createdBy && String(g.createdBy._id || g.createdBy) === String(CURRENT_USER_ID); return memberHit || adminHit || creatorHit; }); groupSelect.innerHTML = ''; if (MY_GROUPS.length === 0){ groupSelect.innerHTML = '<option value="">No groups found. Join or create a group first.</option>'; groupSelect.disabled = true; const submit = document.getElementById('submitButton'); if (submit) submit.disabled = true; const errEl = document.getElementById('group-error'); if (errEl) { errEl.textContent = 'You must join a group before creating a listing.'; errEl.style.display = 'block'; } return; } MY_GROUPS.forEach(g => { const opt = document.createElement('option'); opt.value = g._id; opt.textContent = g.name || ('Group ' + g._id.slice(-6)); groupSelect.appendChild(opt); }); if (MY_GROUPS.length === 1) groupSelect.value = MY_GROUPS[0]._id; if (preselectGroupId){ const hit = MY_GROUPS.some(g => String(g._id) === String(preselectGroupId)); if (hit) { groupSelect.value = preselectGroupId; groupSelect.disabled = false; const submit = document.getElementById('submitButton'); if (submit) submit.disabled = false; const errEl = document.getElementById('group-error'); if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; } } } } catch (e){ console.warn('Failed to load groups', e); if (groupSelect) groupSelect.innerHTML = '<option value="">Failed to load groups</option>'; } }
+    async function loadGroups(){ if (!groupSelect) return; try { const res = await fetch('/api/groups'); const json = await res.json(); const all = (json && json.success && Array.isArray(json.groups)) ? json.groups : []; MY_GROUPS = all.filter(g => { const members = Array.isArray(g.members) ? g.members : []; const admins = Array.isArray(g.admins) ? g.admins : []; const memberHit = members.some(m => String(m._id) === String(CURRENT_USER_ID)); const adminHit = admins.some(a => String(a._id) === String(CURRENT_USER_ID)); const creatorHit = g.createdBy && String(g.createdBy._id || g.createdBy) === String(CURRENT_USER_ID); return memberHit || adminHit || creatorHit; }); groupSelect.innerHTML = ''; if (MY_GROUPS.length === 0){ setHTMLSafe(groupSelect, '<option value="">No groups found. Join or create a group first.</option>'); groupSelect.disabled = true; const submit = document.getElementById('submitButton'); if (submit) submit.disabled = true; const errEl = document.getElementById('group-error'); if (errEl) { errEl.textContent = 'You must join a group before creating a listing.'; errEl.style.display = 'block'; } return; } MY_GROUPS.forEach(g => { const opt = document.createElement('option'); opt.value = g._id; opt.textContent = g.name || ('Group ' + g._id.slice(-6)); groupSelect.appendChild(opt); }); if (MY_GROUPS.length === 1) groupSelect.value = MY_GROUPS[0]._id; if (preselectGroupId){ const hit = MY_GROUPS.some(g => String(g._id) === String(preselectGroupId)); if (hit) { groupSelect.value = preselectGroupId; groupSelect.disabled = false; const submit = document.getElementById('submitButton'); if (submit) submit.disabled = false; const errEl = document.getElementById('group-error'); if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; } } } } catch (e){ console.warn('Failed to load groups', e); if (groupSelect) setHTMLSafe(groupSelect, '<option value="">Failed to load groups</option>'); } }
 
     async function loadVendors(){ const statusEl = document.getElementById('vendorsFetchStatus'); const retryEl = document.getElementById('vendorsRetry'); if (statusEl){ statusEl.style.display = 'block'; statusEl.textContent = 'Loading saved vendors...'; } if (retryEl) retryEl.style.display = 'none'; try { const res = await fetch('/api/marketplace/vendors'); if (!res.ok){ if (statusEl){ if (res.status === 401) statusEl.textContent = 'Please log in to load saved vendors.'; else statusEl.textContent = `Failed to load vendors (HTTP ${res.status}).`; } if (retryEl) retryEl.style.display = 'inline'; return; } const json = await res.json(); if (json.success && Array.isArray(json.data)){ SAVED_VENDORS = json.data; populateVendorSelect(); if (statusEl){ if (SAVED_VENDORS.length === 0){ statusEl.textContent = 'No saved vendors yet.'; statusEl.style.display = 'block'; } else { statusEl.textContent = ''; statusEl.style.display = 'none'; } } if (retryEl) retryEl.style.display = 'none'; } else if (statusEl){ statusEl.textContent = 'Failed to load vendors.'; if (retryEl) retryEl.style.display = 'inline'; } } catch (err){ console.warn('Failed to load vendors:', err); if (statusEl) statusEl.textContent = 'Network error loading vendors.'; const re = document.getElementById('vendorsRetry'); if (re) re.style.display = 'inline'; } }
     function populateVendorSelect(){ if (!savedVendorSelect) return; savedVendorSelect.innerHTML = '<option value="">Select a saved vendor</option>'; SAVED_VENDORS.forEach(v => { const opt = document.createElement('option'); opt.value = v._id; opt.textContent = v.name || '(Unnamed vendor)'; savedVendorSelect.appendChild(opt); }); }
@@ -284,7 +307,7 @@
       const end = start + vendorQuickPickPerPage;
       const pageRows = filtered.slice(start, end);
 
-      if (pageRows.length === 0){ vendorQuickPickList.innerHTML = '<div class="p-3 text-muted">No matches</div>'; renderVendorQuickPickPagination(); return; }
+      if (pageRows.length === 0){ setHTMLSafe(vendorQuickPickList, '<div class="p-3 text-muted">No matches</div>'); renderVendorQuickPickPagination(); return; }
       vendorQuickPickList.innerHTML = '';
       pageRows.forEach((v, idx) => {
         const a = document.createElement('a'); a.href = '#'; a.className = 'list-group-item list-group-item-action'; a.dataset.index = String(idx);
@@ -294,10 +317,10 @@
         const cityStateHtml = highlightHtml(cityState, qRaw);
         const contactBits = [v.contactEmail, v.contactPhone].filter(Boolean).join(' • ');
         const contactHtml = highlightHtml(contactBits, qRaw);
-        a.innerHTML = `<div class="d-flex flex-column">
+        setHTMLSafe(a, `<div class="d-flex flex-column">
           <strong>${nameHtml}</strong>
           <span class="text-muted small">${cityStateHtml}${contactBits ? ' • ' + contactHtml : ''}</span>
-        </div>`;
+        </div>`);
         a.addEventListener('click', (e) => { e.preventDefault(); chooseVendor(v); });
         vendorQuickPickList.appendChild(a);
       });
@@ -376,7 +399,14 @@
           formData.set('casePrice', priceEl && priceEl.value ? priceEl.value : '');
         }
         try {
-          const response = await fetch('/api/marketplace', { method:'POST', body: formData });
+          const token = (window.localStorage && window.localStorage.getItem('token')) || null;
+          const options = { method: 'POST', body: formData, credentials: 'same-origin' };
+          if (token) {
+            options.headers = {
+              Authorization: `Bearer ${token}`
+            };
+          }
+          const response = await fetch('/api/marketplace', options);
           const data = await response.json();
           if (data && data.success){
             alert('Listing created successfully!');

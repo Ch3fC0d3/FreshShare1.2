@@ -3,6 +3,14 @@
 (function(){
   document.addEventListener('DOMContentLoaded', init);
 
+  function setHTMLSafe(el, html){
+    if (!el) return;
+    try {
+      if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+      el.innerHTML = String(html||'');
+    } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+  }
+
   function getCookie(name) {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -148,7 +156,8 @@
       const when = msg.timestamp ? new Date(msg.timestamp) : null;
       const timeStr = when ? when.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
-      li.innerHTML = `
+      const safeId = escapeHtml(String(msg._id || ''));
+      setHTMLSafe(li, `
         <div class="me-3">
           <div class="fw-semibold">${escapeHtml(senderName)}</div>
           <div class="text-muted small">${escapeHtml(timeStr)}</div>
@@ -156,9 +165,9 @@
         </div>
         <div class="d-flex align-items-center gap-2">
           ${msg.read ? '<span class="badge bg-secondary">Read</span>' : '<span class="badge bg-primary">Unread</span>'}
-          ${msg.read ? '' : `<button class="btn btn-sm btn-outline-success" data-action="mark-read" data-id="${msg._id}"><i class="fas fa-check"></i></button>`}
+          ${msg.read ? '' : `<button class="btn btn-sm btn-outline-success" data-action="mark-read" data-id="${safeId}"><i class="fas fa-check"></i></button>`}
         </div>
-      `;
+      `);
       list.appendChild(li);
     });
 
@@ -252,7 +261,7 @@
   function renderError(msg) {
     const list = document.getElementById('messages-list');
     if (!list) return;
-    list.innerHTML = `<li class="list-group-item text-danger">${escapeHtml(msg)}</li>`;
+    setHTMLSafe(list, `<li class="list-group-item text-danger">${escapeHtml(msg)}</li>`);
   }
 
   function escapeHtml(s) {

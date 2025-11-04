@@ -3,9 +3,31 @@
   document.addEventListener('DOMContentLoaded', function(){
     try {
       // --- Helpers ---
-      function escapeHtml(s){
-        try { return String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); } catch(_) { return String(s||''); }
+      function escapeHtml(text){
+        try {
+          return String(text)
+            .replaceAll('&','&amp;')
+            .replaceAll('<','&lt;')
+            .replaceAll('>','&gt;')
+            .replaceAll('"','&quot;')
+            .replaceAll("'",'&#039;');
+        } catch(_){ return String(text||''); }
       }
+
+      // Safely set HTML using DOMPurify / SafeHTML when available
+      function setHTMLSafe(el, html){
+        if (!el) return;
+        try {
+          if (window.SafeHTML && typeof window.SafeHTML.sanitize === 'function'){
+            el.innerHTML = window.SafeHTML.sanitize(String(html||''));
+          } else if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function'){
+            el.innerHTML = window.DOMPurify.sanitize(String(html||''));
+          } else {
+            el.innerHTML = String(html||'');
+          }
+        } catch(_){ try { el.textContent = String(html||''); } catch(__){} }
+      }
+
       function showToast(message, variant){
         try {
           const id = 'fs-toast-container';
@@ -20,7 +42,7 @@
           const bg = variant === 'ok' ? '#065f46' : (variant === 'warn' ? '#92400e' : '#1f2937');
           const border = variant === 'ok' ? '#10b981' : (variant === 'warn' ? '#f59e0b' : '#9ca3af');
           el.style.cssText = `color:#fff;background:${bg};border:1px solid ${border};border-radius:8px;padding:10px 12px;box-shadow:0 2px 8px rgba(0,0,0,.2);opacity:0;transform:translateY(6px);transition:opacity .2s ease, transform .2s ease;`;
-          el.textContent = message || '';
+          setHTMLSafe(el, message || '');
           c.appendChild(el);
           requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
           setTimeout(() => {
@@ -234,14 +256,15 @@
         const el = document.createElement('div');
         el.className = 'forum-card';
         const pid = p.id || p._id || p.postId || '';
-        const author = escapeHtml(p.authorName || 'Member');
+        const author = escapeHtml(p.authorName || (p.createdBy && p.createdBy.username) || 'Member');
         const title = escapeHtml(p.title || '');
         const content = escapeHtml(p.content || '');
         const category = escapeHtml(p.category || 'Discussion');
         const when = relTime(p.createdAt || Date.now());
-        el.innerHTML = `
+        const profileImage = (p.createdBy && p.createdBy.profileImage) || '/images/avatar-placeholder.svg';
+        setHTMLSafe(el, `
           <div class="post-header">
-            <img src="/assets/images/avatar-placeholder.jpg" alt="User Avatar" class="user-avatar">
+            <img src="${escapeHtml(profileImage)}" alt="User Avatar" class="user-avatar" onerror="this.src='/images/avatar-placeholder.svg'">
             <div class="post-user-info">
               <h5>${author}</h5>
               <div class="post-meta">
@@ -267,18 +290,19 @@
               <i class="far fa-bookmark"></i>
               <span>Save</span>
             </div>
-          </div>`;
+          </div>
+        `);
         // Comments block
         const commentsWrap = document.createElement('div');
         commentsWrap.className = 'post-comments';
-        commentsWrap.innerHTML = `
+        setHTMLSafe(commentsWrap, `
           <div class="comments-list" data-post-id="${pid}"></div>
           <form class="comment-form" data-post-id="${pid}" style="margin-top:8px;display:flex;gap:8px;align-items:flex-start">
             <input class="comment-input" type="text" placeholder="Write a comment..." style="flex:1;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px" />
             <button type="submit" class="comment-submit" style="padding:8px 12px;background:#0d6efd;color:#fff;border:none;border-radius:8px">Post</button>
+            <span class="comment-status note" style="margin-left:8px;"></span>
           </form>
-          <div class="comment-status note" style="margin-top:6px"></div>
-        `;
+        `);
         el.appendChild(commentsWrap);
         // wire like/save toggles for this card only
         try {
@@ -335,8 +359,16 @@
               resp.data.slice(-5).forEach(c => {
                 const row = document.createElement('div');
                 row.className = 'comment-row';
-                row.style.cssText = 'padding:6px 0;border-bottom:1px dotted #eee;';
-                row.innerHTML = `<div class="comment-meta"><strong>${escapeHtml(c.authorName||'Member')}</strong> · <span class="note">${relTime(c.createdAt||Date.now())}</span></div><div class="comment-body">${escapeHtml(c.content||'')}</div>`;
+                row.style.cssText = 'padding:6px 0;border-bottom:1px dotted #eee;display:flex;gap:8px;';
+                const commentAuthor = escapeHtml(c.authorName || (c.createdBy && c.createdBy.username) || 'Member');
+                const commentAvatar = (c.createdBy && c.createdBy.profileImage) || '/images/avatar-placeholder.svg';
+                setHTMLSafe(row, `
+                  <img src="${escapeHtml(commentAvatar)}" alt="${commentAuthor}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" onerror="this.src='/images/avatar-placeholder.svg'">
+                  <div style="flex:1">
+                    <div class="comment-meta"><strong>${commentAuthor}</strong> · <span class="note">${relTime(c.createdAt||Date.now())}</span></div>
+                    <div class="comment-text">${escapeHtml(c.content||'')}</div>
+                  </div>
+                `);
                 listEl.appendChild(row);
               });
             }
@@ -359,7 +391,7 @@
               submitBtn.dataset.loading = '1';
               prevPe = submitBtn.style.pointerEvents; prevOp = submitBtn.style.opacity; prevHtml = submitBtn.innerHTML;
               submitBtn.style.pointerEvents = 'none'; submitBtn.style.opacity = '0.6';
-              submitBtn.innerHTML = 'Posting...';
+              setHTMLSafe(submitBtn, '<i class="fas fa-sync-alt fa-spin"></i> <span>Posting...</span>');
             }
             const resp = await postJson(`/api/forum/posts/${encodeURIComponent(pid)}/comments`, { content: text });
             if (resp && resp.success && resp.data){
@@ -367,8 +399,16 @@
               const c = resp.data;
               const row = document.createElement('div');
               row.className = 'comment-row';
-              row.style.cssText = 'padding:6px 0;border-bottom:1px dotted #eee;';
-              row.innerHTML = `<div class="comment-meta"><strong>${escapeHtml(c.authorName||'You')}</strong> · <span class="note">${relTime(c.createdAt||Date.now())}</span></div><div class="comment-body">${escapeHtml(c.content||'')}</div>`;
+              row.style.cssText = 'padding:6px 0;border-bottom:1px dotted #eee;display:flex;gap:8px;';
+              const commentAuthor = escapeHtml(c.authorName || (c.createdBy && c.createdBy.username) || 'You');
+              const commentAvatar = (c.createdBy && c.createdBy.profileImage) || '/images/avatar-placeholder.svg';
+              setHTMLSafe(row, `
+                <img src="${escapeHtml(commentAvatar)}" alt="${commentAuthor}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" onerror="this.src='/images/avatar-placeholder.svg'">
+                <div style="flex:1">
+                  <div class="comment-meta"><strong>${commentAuthor}</strong> · <span class="note">${relTime(c.createdAt||Date.now())}</span></div>
+                  <div class="comment-text">${escapeHtml(c.content||'')}</div>
+                </div>
+              `);
               listEl.appendChild(row);
               try { input.value=''; } catch(_) {}
               if (status){ status.textContent = ''; }
@@ -427,7 +467,7 @@
           const prevPe = btn.style.pointerEvents; const prevOp = btn.style.opacity; const prevHtml = btn.innerHTML;
           btn.style.pointerEvents = 'none';
           btn.style.opacity = '0.6';
-          btn.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> <span>Loading...</span>';
+          setHTMLSafe(btn, '<i class="fas fa-sync-alt fa-spin"></i> <span>Loading...</span>');
           currentPage += 1;
           await loadPosts(currentPage, true);
           btn.dataset.loading = '';
@@ -456,7 +496,7 @@
             publishBtn.dataset.loading = '1';
             prevPe = publishBtn.style.pointerEvents; prevOp = publishBtn.style.opacity; prevHtml = publishBtn.innerHTML;
             publishBtn.style.pointerEvents = 'none'; publishBtn.style.opacity = '0.6';
-            publishBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Publishing...';
+            setHTMLSafe(publishBtn, '<i class="fas fa-paper-plane"></i> Publishing...');
           }
           if (msgEl){ msgEl.className = 'note'; msgEl.textContent = 'Publishing...'; }
           const resp = await postJson('/api/forum/posts', { title, content, category, images: [] });

@@ -2,6 +2,13 @@
 (function(){
   document.addEventListener('DOMContentLoaded', function(){
     try {
+      function setHTMLSafe(el, html){
+        if (!el) return;
+        try {
+          if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+          el.innerHTML = String(html||'');
+        } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+      }
       const resendEmailForm = document.getElementById('resendEmailForm');
       const submitResendBtn = document.getElementById('submitResendBtn');
       const resendSuccessAlert = document.getElementById('resendSuccessAlert');
@@ -16,7 +23,7 @@
           if (resendSuccessAlert) resendSuccessAlert.classList.add('d-none');
           if (resendErrorAlert) resendErrorAlert.classList.add('d-none');
           submitResendBtn.disabled = true;
-          submitResendBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
+          setHTMLSafe(submitResendBtn, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...');
           const response = await fetch('/api/email/send-verification', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -40,7 +47,7 @@
           try { console.error('Resend verification error:', error); } catch(_) {}
         } finally {
           submitResendBtn.disabled = false;
-          submitResendBtn.innerHTML = 'Send';
+          submitResendBtn.textContent = 'Send';
         }
       });
     } catch (e){ try { console.error('verify-email-page init error', e); } catch(_) {} }

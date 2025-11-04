@@ -91,12 +91,40 @@
       </div>
     </div>
 
-    <div class="card mt-4">
-      <div class="card-header"><h2 class="h5 mb-0">System Utilities</h2></div>
+    <div class="card mt-4" id="system-utilities">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h2 class="h5 mb-0">System Utilities</h2>
+        <div class="d-flex align-items-center gap-2">
+          <small class="text-muted" id="system-updated">Updated —</small>
+          <button id="system-refresh" class="btn btn-sm btn-outline-secondary"><i class="fas fa-rotate"></i> Refresh</button>
+        </div>
+      </div>
       <div class="card-body">
-        <div class="d-flex gap-2 flex-wrap">
-          <a class="btn btn-outline-secondary" href="/api/health/db" target="_blank">DB Health</a>
-          <a class="btn btn-outline-secondary" href="/api" target="_blank">API Index</a>
+        <div class="row g-3" id="system-status">
+          <div class="col-md-4">
+            <div class="border rounded p-3 h-100">
+              <div class="small text-muted">Database</div>
+              <div id="system-db-status" class="fw-semibold">—</div>
+              <div id="system-db-details" class="small text-muted"></div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="border rounded p-3 h-100">
+              <div class="small text-muted">API</div>
+              <div id="system-api-status" class="fw-semibold">—</div>
+              <div class="d-flex gap-2 flex-wrap mt-2">
+                <a class="btn btn-outline-secondary btn-sm" href="/api/health/db" target="_blank">DB Health</a>
+                <a class="btn btn-outline-secondary btn-sm" href="/api" target="_blank">API Index</a>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="border rounded p-3 h-100">
+              <div class="small text-muted">Application Server</div>
+              <div id="system-node-uptime" class="fw-semibold">—</div>
+              <div id="system-node-details" class="small text-muted"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

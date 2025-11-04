@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Message = require('../../models/message.model');
 const User = require('../../models/user.model');
+const { body, query, param, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+const authConfig = require('../../config/auth.config');
 
 // Simple in-memory rate limiter (per-process, resets on restart)
 function createRateLimiter({ windowMs, limit, keyFn }) {
@@ -37,7 +39,7 @@ function getUserId(req) {
     const authHeader = req.headers && req.headers.authorization;
     const rawToken = tokenFromCookie || (authHeader ? (authHeader.startsWith('Bearer ') ? authHeader.substring(7) : authHeader) : null);
     if (rawToken) {
-      const decoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'bezkoder-secret-key');
+      const decoded = jwt.verify(rawToken, (authConfig && authConfig.secret) || process.env.JWT_SECRET);
       if (decoded && decoded.id) return String(decoded.id);
     }
   } catch (_) {}
@@ -94,7 +96,21 @@ router.get('/unread-count', async (req, res) => {
 });
 
 // PATCH /api/messages/:id/read  { read: true|false }
-router.patch('/:id/read', express.json(), async (req, res) => {
+const handleValidation = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ success: false, message: 'Validation failed', errors: errors.array().map(e=>e.msg||(`${e.param}: ${e.msg}`)) });
+  next();
+};
+
+router.patch(
+  '/:id/read',
+  express.json(),
+  [
+    param('id').isString().trim().notEmpty(),
+    body('read').optional().isBoolean()
+  ],
+  handleValidation,
+  async (req, res) => {
   try {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -117,6 +133,8 @@ router.patch('/:id/read', express.json(), async (req, res) => {
 router.patch('/mark-all-read',
   createRateLimiter({ windowMs: 60 * 1000, limit: 6, keyFn: (req) => getUserId(req) || req.ip }),
   express.json(),
+  [ body('olderThan').optional().isISO8601() ],
+  handleValidation,
   async (req, res) => {
   try {
     const userId = getUserId(req);
@@ -140,6 +158,12 @@ router.post(
   '/',
   createRateLimiter({ windowMs: 60 * 1000, limit: 12, keyFn: (req) => getUserId(req) || req.ip }),
   express.json(),
+  [
+    body('content').isString().trim().isLength({ min: 1, max: 2000 }),
+    body('recipientId').optional().isString().trim().notEmpty(),
+    body('recipientUsername').optional().isString().trim().isLength({ min: 3 })
+  ],
+  handleValidation,
   async (req, res) => {
   try {
     const userId = getUserId(req);

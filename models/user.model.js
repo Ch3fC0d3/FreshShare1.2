@@ -30,11 +30,12 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Password is required'],
-    minlength: [6, 'Password must be at least 6 characters long']
+    minlength: [8, 'Password must be at least 8 characters long'],
+    select: false // Don't return password by default in queries
   },
   profileImage: {
     type: String,
-    default: "/assets/images/avatar-placeholder.jpg"
+    default: "/images/avatar-placeholder.svg"
   },
   bio: {
     type: String,

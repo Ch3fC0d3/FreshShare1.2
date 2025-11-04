@@ -137,13 +137,10 @@ class FreshShareHeader {
 }
 
 // Initialize the header when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-  new FreshShareHeader();
-  // Messages unread badge updater
+document.addEventListener('DOMContentLoaded', function(){
   try {
-    const getCookie = (name) => {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
+    function setHTMLSafe(el, html){
+      if (!el) return;
       if (parts.length === 2) return parts.pop().split(';').shift();
       return null;
     };
@@ -197,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (verifySuccessAlert) verifySuccessAlert.classList.add('d-none');
           if (verifyErrorAlert) verifyErrorAlert.classList.add('d-none');
           sendVerificationBtn.disabled = true;
-          sendVerificationBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
+          setHTMLSafe(sendVerificationBtn, '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...');
           const token = (function(){ try { return localStorage.getItem('token') || ''; } catch(_) { return ''; } })();
           const response = await fetch('/api/email/resend-verification', {
             method: 'POST',
@@ -220,7 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
           try { console.error('Verify email error:', error); } catch(_) {}
         } finally {
           sendVerificationBtn.disabled = false;
-          sendVerificationBtn.innerHTML = 'Send Verification Email';
+          sendVerificationBtn.textContent = 'Send Verification Email';
         }
       });
     }

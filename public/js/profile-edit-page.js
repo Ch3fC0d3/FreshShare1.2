@@ -25,11 +25,17 @@
           const file = e.target.files[0];
           if (file) {
             const reader = new FileReader();
-            reader.onload = function(ev){ profileImagePreview.src = ev.target.result; };
+            reader.onload = function(ev){
+              if (profileImagePreview) {
+                profileImagePreview.src = ev.target.result;
+              }
+            };
             reader.readAsDataURL(file);
           }
         });
       }
+
+      const defaultAvatar = '/images/avatar-placeholder.svg';
 
       // Handle form submission
       if (profileForm) {
@@ -39,28 +45,42 @@
           if (errorMessage) errorMessage.classList.add('d-none');
           if (successMessage) successMessage.classList.add('d-none');
 
-          const username = document.getElementById('username').value;
-          const email = document.getElementById('email').value;
-          const phoneNumber = document.getElementById('phoneNumber').value;
-          const street = document.getElementById('street').value;
-          const city = document.getElementById('city').value;
-          const state = document.getElementById('state').value;
-          const zipCode = document.getElementById('zipCode').value;
+          const formData = new FormData();
+          const getVal = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+          };
+
+          formData.append('username', getVal('username'));
+          formData.append('email', getVal('email'));
+          formData.append('phoneNumber', getVal('phoneNumber'));
+          formData.append('street', getVal('street'));
+          formData.append('city', getVal('city'));
+          formData.append('state', getVal('state'));
+          formData.append('zipCode', getVal('zipCode'));
+
+          const imageFile = profileImageInput && profileImageInput.files ? profileImageInput.files[0] : null;
+          if (imageFile) {
+            formData.append('profileImage', imageFile);
+          }
 
           try {
             const response = await fetch('/api/auth/profile', {
               method: 'PUT',
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': token
+                'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ username, email, phoneNumber, street, city, state, zipCode })
+              body: formData
             });
             const data = await response.json();
             if (response.ok) {
               try { localStorage.setItem('user', JSON.stringify(data.user)); } catch(_) {}
               if (successMessage){ successMessage.textContent = 'Profile updated successfully!'; successMessage.classList.remove('d-none'); }
               try { window.scrollTo(0, 0); } catch(_) {}
+              // Update preview if image was uploaded
+              if (profileImagePreview) {
+                profileImagePreview.src = (data.user && data.user.profileImage) || defaultAvatar;
+              }
             } else {
               if (errorMessage){ errorMessage.textContent = (data && data.message) || 'An error occurred while updating profile.'; errorMessage.classList.remove('d-none'); }
             }
@@ -73,7 +93,7 @@
 
       async function loadUserProfile(){
         try {
-          const response = await fetch('/api/auth/profile', { method: 'GET', headers: { 'Authorization': token } });
+          const response = await fetch('/api/auth/profile', { method: 'GET', headers: { 'Authorization': token }, credentials: 'include' });
           if (response.ok) {
             const data = await response.json();
             const user = data.user || {};
@@ -85,7 +105,7 @@
             setVal('city', user.city);
             setVal('state', user.state);
             setVal('zipCode', user.zipCode);
-            if (user.profileImage && profileImagePreview){ profileImagePreview.src = user.profileImage; }
+            if (profileImagePreview){ profileImagePreview.src = user.profileImage || defaultAvatar; }
           } else {
             if (response.status === 401 || response.status === 403) {
               try { localStorage.removeItem('token'); localStorage.removeItem('user'); } catch(_) {}

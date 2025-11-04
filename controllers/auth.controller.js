@@ -3,8 +3,35 @@ const jwt = require('jsonwebtoken');
 const db = require('../models');
 const User = db.user;
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
 const emailController = require('./email.controller');
 const authConfig = require('../config/auth.config');
+
+const DEFAULT_PROFILE_IMAGE = '/images/avatar-placeholder.svg';
+const LEGACY_PLACEHOLDER_MATCH = 'avatar-placeholder.jpg';
+
+const normalizeProfileImage = (value = '') => {
+  const raw = (value || '').trim();
+  if (!raw) {
+    return DEFAULT_PROFILE_IMAGE;
+  }
+  if (raw.includes(LEGACY_PLACEHOLDER_MATCH)) {
+    return DEFAULT_PROFILE_IMAGE;
+  }
+  return raw;
+};
+
+const shouldRemoveExistingImage = (value = '') => {
+  const normalized = normalizeProfileImage(value);
+  if (!value || !value.trim()) {
+    return false;
+  }
+  if (normalized !== value) {
+    return false;
+  }
+  return normalized !== DEFAULT_PROFILE_IMAGE;
+};
 
 // Retrieve JWT secret from shared config and keep legacy secret for compatibility
 const JWT_SECRET = authConfig.secret;
@@ -56,8 +83,8 @@ exports.signup = async (req, res) => {
       });
     }
 
-    // Create new user
-    const hashedPassword = bcrypt.hashSync(password, 8);
+    // Create new user - use async bcrypt for better performance and security
+    const hashedPassword = await bcrypt.hash(password, 10);
     
     console.log('Creating new user:', { 
       username, 
@@ -164,8 +191,8 @@ exports.login = async (req, res) => {
     const tokenExpiration = rememberMe ? 30 * 24 * 60 * 60 : 7 * 24 * 60 * 60; // 30 days or 7 days
     const cookieExpiration = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000; // in milliseconds
 
-    // Find user by username
-    const user = await User.findOne({ username: username });
+    // Find user by username - explicitly select password since it's now excluded by default
+    const user = await User.findOne({ username: username }).select('+password');
 
     if (!user) {
       return res.status(404).json({
@@ -174,8 +201,8 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check password
-    const isPasswordValid = bcrypt.compareSync(password, user.password);
+    // Check password - use async for better performance
+    const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -188,7 +215,9 @@ exports.login = async (req, res) => {
     });
     try {
       console.log('[auth.controller] Issued login token preview:', token.substring(0, 15) + '...');
-    } catch (_) {}
+    } catch (err) {
+      console.error('[auth.controller] Failed to log token preview:', err);
+    }
 
     const isSecureRequest = req.secure || (req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https';
     res.cookie('token', token, {
@@ -243,18 +272,18 @@ exports.login = async (req, res) => {
  */
 exports.getUserProfile = async (req, res) => {
   try {
-    const userId = req.userId; // Set by authJwt middleware
-    
+    const userId = req.userId;
     const user = await User.findById(userId);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found!"
+        message: 'User not found!'
       });
     }
-    
-    // Return user info without password
+
+    const location = user.location || {};
+
     return res.status(200).json({
       success: true,
       user: {
@@ -264,110 +293,145 @@ exports.getUserProfile = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         nickname: user.nickname,
-        profileImage: user.profileImage,
+        profileImage: normalizeProfileImage(user.profileImage),
         phoneNumber: user.phoneNumber,
-        street: user.location.street,
-        city: user.location.city,
-        state: user.state,
-        zipCode: user.location.zipCode,
+        street: location.street || '',
+        city: location.city || '',
+        state: location.state || user.state || '',
+        zipCode: location.zipCode || '',
         privacy: user.privacy || {},
         notifications: user.notifications || {}
       }
     });
   } catch (error) {
-    console.error("Get profile error:", error);
+    console.error('Get profile error:', error);
     return res.status(500).json({
       success: false,
-      message: "An error occurred while retrieving user profile.",
+      message: 'An error occurred while retrieving user profile.',
       error: error.message
     });
   }
 };
 
-/**
- * Update user profile information
- * @param {Object} req - Express request object (with user attached from middleware)
- * @param {Object} res - Express response object
- * @returns {Object} - JSON response with updated user info
- */
 exports.updateUserProfile = async (req, res) => {
   try {
-    const userId = req.userId; // Set by authJwt middleware
-    
-    // Get fields to update
-    const { 
-      username, 
-      email, 
-      street, 
-      city, 
-      state, 
-      zipCode, 
-      phoneNumber 
-    } = req.body;
-    
-    // Check if username or email already in use by another user
-    if (username || email) {
+    const userId = req.userId;
+    const {
+      username,
+      email,
+      street,
+      city,
+      state,
+      zipCode,
+      phoneNumber,
+      firstName,
+      lastName,
+      nickname
+    } = req.body || {};
+
+    const userDoc = await User.findById(userId);
+    if (!userDoc) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found!'
+      });
+    }
+
+    if ((username && username !== userDoc.username) || (email && email !== userDoc.email)) {
       const existingUser = await User.findOne({
         _id: { $ne: userId },
         $or: [
-          { username: username },
-          { email: email }
-        ]
+          username ? { username } : null,
+          email ? { email } : null
+        ].filter(Boolean)
       });
-      
+
       if (existingUser) {
         return res.status(400).json({
           success: false,
-          message: "Username or email is already in use by another user!"
+          message: 'Username or email is already in use by another user!'
         });
       }
     }
-    
-    // Create update object
-    const updateData = {};
-    if (username) updateData.username = username;
-    if (email) updateData.email = email;
-    if (street) updateData.location.street = street;
-    if (city) updateData.location.city = city;
-    if (state) updateData.state = state;
-    if (zipCode) updateData.location.zipCode = zipCode;
-    if (phoneNumber) updateData.phoneNumber = phoneNumber;
-    
-    // Update user
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      updateData,
-      { new: true } // Return updated user
-    );
-    
-    if (!updatedUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found!"
-      });
+
+    if (username) userDoc.username = username;
+    if (email) userDoc.email = email;
+    if (typeof phoneNumber !== 'undefined') {
+      userDoc.phoneNumber = phoneNumber;
     }
-    
-    // Return updated user info without password
+    if (typeof firstName !== 'undefined') {
+      userDoc.firstName = firstName;
+    }
+    if (typeof lastName !== 'undefined') {
+      userDoc.lastName = lastName;
+    }
+    if (typeof nickname !== 'undefined') {
+      userDoc.nickname = nickname;
+    }
+
+    if (!userDoc.location) {
+      userDoc.location = { street: '', city: '', state: '', zipCode: '' };
+    }
+
+    if (typeof street !== 'undefined') {
+      userDoc.location.street = street;
+    }
+    if (typeof city !== 'undefined') {
+      userDoc.location.city = city;
+    }
+    if (typeof zipCode !== 'undefined') {
+      userDoc.location.zipCode = zipCode;
+    }
+    if (typeof state !== 'undefined') {
+      userDoc.location.state = state;
+      userDoc.state = state;
+    }
+
+    if (req.file) {
+      const relativePath = `/uploads/profiles/${path.basename(req.file.path)}`;
+      if (shouldRemoveExistingImage(userDoc.profileImage)) {
+        const prevPath = path.join(
+          __dirname,
+          '..',
+          'public',
+          userDoc.profileImage.startsWith('/') ? userDoc.profileImage.slice(1) : userDoc.profileImage
+        );
+        fs.unlink(prevPath, (err) => {
+          if (err && err.code !== 'ENOENT') {
+            console.error('Failed to remove old profile image:', err);
+          }
+        });
+      }
+      userDoc.profileImage = relativePath;
+    } else if (!userDoc.profileImage || userDoc.profileImage.includes(LEGACY_PLACEHOLDER_MATCH)) {
+      userDoc.profileImage = DEFAULT_PROFILE_IMAGE;
+    }
+
+    await userDoc.save();
+
     return res.status(200).json({
       success: true,
-      message: "Profile updated successfully!",
+      message: 'Profile updated successfully!',
       user: {
-        id: updatedUser._id,
-        username: updatedUser.username,
-        email: updatedUser.email,
-        profileImage: updatedUser.profileImage,
-        street: updatedUser.location.street,
-        city: updatedUser.location.city,
-        state: updatedUser.state,
-        zipCode: updatedUser.location.zipCode,
-        phoneNumber: updatedUser.phoneNumber
+        id: userDoc._id,
+        username: userDoc.username,
+        email: userDoc.email,
+        profileImage: normalizeProfileImage(userDoc.profileImage),
+        firstName: userDoc.firstName,
+        lastName: userDoc.lastName,
+        nickname: userDoc.nickname,
+        street: userDoc.location.street,
+        city: userDoc.location.city,
+        state: userDoc.location.state || userDoc.state || '',
+        zipCode: userDoc.location.zipCode,
+        phoneNumber: userDoc.phoneNumber
       }
     });
   } catch (error) {
-    console.error("Update profile error:", error);
+    console.error('Update profile error:', error);
     return res.status(500).json({
       success: false,
-      message: "An error occurred while updating user profile.",
+      message: 'An error occurred while updating user profile.',
       error: error.message
     });
   }

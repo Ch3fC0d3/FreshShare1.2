@@ -3,6 +3,17 @@
  * Manages dashboard data fetching and UI updates
  */
 
+// Safe HTML helpers available to all functions in this module
+function setHTMLSafe(el, html) {
+  try {
+    if (window.SafeHTML && window.SafeHTML.setHTML) return window.SafeHTML.setHTML(el, String(html||''));
+    el.innerHTML = String(html||'');
+  } catch(_) { try { el.textContent = String(html||''); } catch(__){} }
+}
+function escapeHtml(s) {
+  try { return (window.SafeHTML && window.SafeHTML.escape) ? window.SafeHTML.escape(String(s||'')) : String(s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); } catch(_) { return String(s||''); }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Check if user is authenticated
   const token = localStorage.getItem('token') || getCookie('token');
@@ -134,6 +145,7 @@ function updateCalendar(month, year, events) {
   calendarDays.forEach(day => {
     day.classList.remove('has-delivery', 'has-event');
     day.removeAttribute('data-event-count');
+    day.classList.remove('today');
   });
   
   // Group events by day
@@ -170,6 +182,9 @@ function updateCalendar(month, year, events) {
     const dayOfMonth = today.getDate();
     const todaysEvents = eventsByDay[dayOfMonth] || [];
     updateTodaysSchedule(todaysEvents);
+    // Highlight today's cell for better contrast
+    const todayCell = findDayCell(dayOfMonth);
+    if (todayCell) todayCell.classList.add('today');
   }
 }
 
@@ -202,7 +217,7 @@ function updateTodaysSchedule(events) {
   eventsList.innerHTML = '';
   
   if (events.length === 0) {
-    eventsList.innerHTML = '<div class="no-events">No events scheduled for today</div>';
+    setHTMLSafe(eventsList, '<div class="no-events">No events scheduled for today</div>');
     return;
   }
   
@@ -216,11 +231,11 @@ function updateTodaysSchedule(events) {
     
     const eventItem = document.createElement('div');
     eventItem.className = 'event-item';
-    eventItem.innerHTML = `
-      <span class="event-date">${timeString}</span>
-      <div class="event-title">${event.title}</div>
-      <div class="event-desc">${event.description || event.location || ''}</div>
-    `;
+    setHTMLSafe(eventItem, `
+      <span class="event-date">${escapeHtml(timeString)}</span>
+      <div class="event-title">${escapeHtml(event.title)}</div>
+      <div class="event-desc">${escapeHtml(event.description || event.location || '')}</div>
+    `);
     
     eventsList.appendChild(eventItem);
   });
@@ -237,7 +252,7 @@ function updateOrdersSection(orders) {
   orderList.innerHTML = '';
   
   if (!orders || orders.length === 0) {
-    orderList.innerHTML = '<li class="no-data">No recent orders found</li>';
+    setHTMLSafe(orderList, '<li class="no-data">No recent orders found</li>');
     return;
   }
   
@@ -250,22 +265,22 @@ function updateOrdersSection(orders) {
     
     const orderItem = document.createElement('li');
     orderItem.className = 'order-item';
-    orderItem.innerHTML = `
+    setHTMLSafe(orderItem, `
       <div class="order-header">
-        <span class="order-id">Order #${order.orderNumber}</span>
-        <span class="order-date">${orderDate}</span>
+        <span class="order-id">Order #${escapeHtml(order.orderNumber)}</span>
+        <span class="order-date">${escapeHtml(orderDate)}</span>
       </div>
       <div class="order-items">
-        ${order.groupName} (${order.items} items)
+        ${escapeHtml(order.groupName)} (${Number(order.items)||0} items)
       </div>
       <div class="order-footer">
-        <span class="order-total">$${order.total.toFixed(2)}</span>
+        <span class="order-total">$${Number(order.total||0).toFixed(2)}</span>
         <div class="order-actions">
-          <button class="btn btn-outline" onclick="viewOrderDetails('${order.id}')">View Details</button>
-          <button class="btn btn-primary" onclick="reorderOrder('${order.id}', this)">Reorder</button>
+          <button class="btn btn-outline" onclick="viewOrderDetails('${escapeHtml(order.id)}')">View Details</button>
+          <button class="btn btn-primary" onclick="reorderOrder('${escapeHtml(order.id)}', this)">Reorder</button>
         </div>
       </div>
-    `;
+    `);
     
     orderList.appendChild(orderItem);
   });
@@ -282,7 +297,7 @@ function updateDeliveriesSection(deliveries) {
   deliveryList.innerHTML = '';
   
   if (!deliveries || deliveries.length === 0) {
-    deliveryList.innerHTML = '<li class="no-data">No upcoming deliveries</li>';
+    setHTMLSafe(deliveryList, '<li class="no-data">No upcoming deliveries</li>');
     return;
   }
   
@@ -302,19 +317,19 @@ function updateDeliveriesSection(deliveries) {
     
     const deliveryItem = document.createElement('li');
     deliveryItem.className = 'delivery-item';
-    deliveryItem.innerHTML = `
+    setHTMLSafe(deliveryItem, `
       <div>
-        <span>${delivery.groupName}</span>
-        <span>${dateDisplay}</span>
+        <span>${escapeHtml(delivery.groupName)}</span>
+        <span>${escapeHtml(dateDisplay)}</span>
       </div>
       <div>
-        Order #${delivery.orderNumber}
+        Order #${escapeHtml(delivery.orderNumber)}
       </div>
       <div>
-        <span>${delivery.status}</span>
-        <span>$${delivery.total.toFixed(2)}</span>
+        <span>${escapeHtml(delivery.status)}</span>
+        <span>$${Number(delivery.total||0).toFixed(2)}</span>
       </div>
-    `;
+    `);
     
     deliveryList.appendChild(deliveryItem);
   });
@@ -331,7 +346,7 @@ function updateMessagesSection(messages) {
   messageList.innerHTML = '';
   
   if (!messages || messages.length === 0) {
-    messageList.innerHTML = '<li class="no-data">No messages</li>';
+    setHTMLSafe(messageList, '<li class="no-data">No messages</li>');
     return;
   }
   
@@ -342,20 +357,21 @@ function updateMessagesSection(messages) {
     messageItem.className = 'message-item';
     if (!message.read) messageItem.classList.add('unread');
     
-    messageItem.innerHTML = `
+    const contentPreview = String(message.content||'');
+    setHTMLSafe(messageItem, `
       <div>
         <div>
           <i class="fas fa-user"></i>
         </div>
         <div>
-          <div>${message.sender.username}</div>
-          <div>${message.content.substring(0, 50)}${message.content.length > 50 ? '...' : ''}</div>
+          <div>${escapeHtml(message.sender && message.sender.username)}</div>
+          <div>${escapeHtml(contentPreview.substring(0, 50))}${contentPreview.length > 50 ? '...' : ''}</div>
         </div>
       </div>
       <div>
-        ${messageTime}
+        ${escapeHtml(messageTime)}
       </div>
-    `;
+    `);
     
     messageList.appendChild(messageItem);
   });
@@ -466,7 +482,7 @@ function renderActivePieceOrders(items) {
   if (!ul) return;
   ul.innerHTML = '';
   if (!items || items.length === 0) {
-    ul.innerHTML = '<li class="no-data">No active piece orders</li>';
+    setHTMLSafe(ul, '<li class="no-data">No active piece orders</li>');
     return;
   }
   items.forEach(it => {
@@ -479,18 +495,18 @@ function renderActivePieceOrders(items) {
       : '/uploads/marketplace/default-product.jpg';
     const left = Number(it.currentCaseRemaining || 0);
     const yours = Number(it.userPieces || 0);
-    li.innerHTML = `
+    setHTMLSafe(li, `
       <div style="display:flex;gap:10px;align-items:center;">
-        <img src="${imgSrc}" alt="${it.title}" style="width:40px;height:40px;border-radius:4px;object-fit:cover;">
+        <img src="${escapeHtml(imgSrc)}" alt="${escapeHtml(it.title)}" style="width:40px;height:40px;border-radius:4px;object-fit:cover;">
         <div>
-          <div><strong>${it.title}</strong></div>
-          <div class="text-muted small">Your pieces: ${yours} • Filling – ${left} left</div>
+          <div><strong>${escapeHtml(it.title)}</strong></div>
+          <div class="text-muted small">Your pieces: ${Number(yours)} • Filling – ${Number(left)} left</div>
         </div>
       </div>
       <div>
-        <a class="btn btn-outline" href="/listings/${it.listingId}">Adjust</a>
+        <a class="btn btn-outline" href="/listings/${escapeHtml(String(it.listingId))}">Adjust</a>
       </div>
-    `;
+    `);
     ul.appendChild(li);
   });
 }
