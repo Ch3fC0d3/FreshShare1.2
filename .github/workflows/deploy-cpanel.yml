@@ -49,7 +49,19 @@ jobs:
           echo "EMAIL_PASS=${{ secrets.EMAIL_PASS }}" >> .env
           echo "EMAIL_FROM=${{ secrets.EMAIL_FROM }}" >> .env
           
-          # Restart the Node.js application via cPanel API or touch restart.txt
+          # Create tmp directory if it doesn't exist
+          mkdir -p tmp
+          
+          # Restart the Node.js application
           touch tmp/restart.txt
+          
+          # Alternative: Kill and restart the process
+          pkill -f "node.*server.js" || echo "No existing process to kill"
+          
+          # Wait a moment
+          sleep 2
+          
+          # Start the app in background
+          NODE_ENV=production PORT=3001 nohup node server.js > server.log 2>&1 &
           
           echo "Deployment completed successfully!"
