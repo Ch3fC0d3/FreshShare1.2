@@ -56,8 +56,8 @@ if (fs.existsSync(envPath)) {
 const authConfig = require('./config/auth.config');
 
 const app = express();
-// Use port 3002 to ensure consistency with frontend JS in local-auth.js
-const PORT = 3002;
+// Use dynamic port for cPanel/Passenger, fallback to 3002 for local development
+const PORT = process.env.PORT || 3002;
 
 // Ensure templates always have an assetVersion available
 app.locals.assetVersion = process.env.ASSET_VERSION || String(Date.now());
@@ -86,12 +86,12 @@ app.use((req, res, next) => {
       "default-src 'self'",
       "base-uri 'self'",
       // Allow WebAssembly execution without enabling general eval
-      "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+      "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://kit.fontawesome.com",
+      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://ka-f.fontawesome.com",
       // Allow product images from Open Food Facts (free source) and Unsplash (stable photos)
       "img-src 'self' data: blob: https://images.openfoodfacts.org https://static.openfoodfacts.org https://images.unsplash.com https://plus.unsplash.com",
-      "font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.gstatic.com data:",
-      "connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+      "font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.gstatic.com https://ka-f.fontawesome.com data:",
+      "connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://ka-f.fontawesome.com",
       // Permit web workers created from blob URLs (needed by some libraries such as Quagga)
       "worker-src 'self' blob:",
       // Back-compat for browsers that still rely on child-src for workers
